@@ -9,6 +9,7 @@ import VoiceRecorder from "./VoiceRecorder";
 import ReactionPicker, { ReactionBar } from "./ReactionPicker";
 import { useTyping, formatTypingText } from "@/hooks/useTyping";
 import CallView from "@/components/calls/CallView";
+import UserActionsMenu from "@/components/UserActionsMenu";
 
 // ── Media Picker Sheet ────────────────────────────────────────────────────────
 function MediaPickerSheet({
@@ -780,6 +781,17 @@ export default function ChatView({
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
           </svg>
         </button>
+        {/* Block/Report (only for direct chats) */}
+        {conversation.type === "direct" && (() => {
+          const other = conversation.members?.find((m: any) => m.user_id !== currentUserId);
+          return other ? (
+            <UserActionsMenu
+              targetUserId={other.user_id}
+              targetName={name}
+              currentUserId={currentUserId}
+            />
+          ) : null;
+        })()}
       </div>
 
       {/* Messages */}
