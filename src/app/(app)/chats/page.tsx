@@ -42,6 +42,14 @@ export default async function ChatsPage() {
         <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>Chats</h1>
         <div className="flex gap-2 items-center">
           <LookaroundButton />
+          {/* Search */}
+          <Link href="/search"
+            className="w-9 h-9 flex items-center justify-center rounded-full"
+            style={{ color: "var(--foreground-3)" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+            </svg>
+          </Link>
           {/* Neuer Chat → /chats/new */}
           <Link href="/chats/new"
             className="w-9 h-9 flex items-center justify-center rounded-full"
