@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface Channel {
@@ -32,6 +33,7 @@ export default function ChannelsFeed({
   trending: Channel[];
   currentUserId: string;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<"feed" | "entdecken">("feed");
   const [followedIds, setFollowedIds] = useState<Set<string>>(
     new Set(following.map((c) => c.id))
@@ -127,15 +129,27 @@ export default function ChannelsFeed({
           <h1 className="text-lg font-bold" style={{ color: "var(--foreground)" }}>
             Kanäle
           </h1>
-          <button
-            className="w-8 h-8 rounded-full flex items-center justify-center"
-            style={{ background: "var(--surface-2)" }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => router.push("/search")}
+              className="w-8 h-8 rounded-full flex items-center justify-center"
+              style={{ color: "var(--foreground-3)" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+            </button>
+            <button
+              onClick={() => router.push("/channels/new")}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white"
+              style={{ background: "var(--nexio-green)" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -472,10 +486,12 @@ function ChannelRow({
   onToggle: () => void;
   showSubscriberCount?: boolean;
 }) {
+  const router = useRouter();
   return (
     <div
-      className="flex items-center gap-3 p-3 rounded-2xl border"
+      className="flex items-center gap-3 p-3 rounded-2xl border cursor-pointer"
       style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+      onClick={() => router.push(`/channels/${channel.id}`)}
     >
       {/* Avatar */}
       <div
@@ -515,7 +531,7 @@ function ChannelRow({
 
       {/* Follow button */}
       <button
-        onClick={onToggle}
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
         className="flex-none px-3 py-1.5 rounded-full text-xs font-semibold"
         style={{
           background: isFollowing ? "var(--surface-2)" : "var(--nexio-green)",
