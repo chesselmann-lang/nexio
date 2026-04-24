@@ -22,7 +22,9 @@ const MENU_SECTIONS = [
   },
   {
     items: [
-      { icon: "💼", label: "Business-Modus", href: "/business", badge: "NEU" },
+      { icon: "🧩", label: "Mini-Programme", href: "/mini-apps", badge: "NEU" },
+      { icon: "💼", label: "Business-Modus", href: "/business" },
+      { icon: "💰", label: "Preise & Pläne", href: "/pricing" },
       { icon: "🔗", label: "Verbundene Apps", href: "/settings/integrations" },
       { icon: "🛡️", label: "DSGVO & meine Daten", href: "/settings/gdpr" },
     ],
@@ -110,6 +112,7 @@ export default function ProfileClient({ profile, userId }: { profile: User | nul
             {section.items.map((item) => (
               <button
                 key={item.label}
+                onClick={() => router.push(item.href)}
                 className="w-full flex items-center gap-3 px-4 py-3.5 border-b text-left"
                 style={{ background: "var(--surface)", borderColor: "var(--border)" }}
               >
