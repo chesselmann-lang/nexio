@@ -36,7 +36,9 @@ const MENU_SECTIONS = [
   },
 ];
 
-export default function ProfileClient({ profile }: { profile: User | null }) {
+const ADMIN_USER_ID = "152f5271-385e-40f5-8d9e-ecedee59525b";
+
+export default function ProfileClient({ profile, userId }: { profile: User | null; userId?: string }) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -129,6 +131,19 @@ export default function ProfileClient({ profile }: { profile: User | null }) {
             ))}
           </div>
         ))}
+
+        {/* Admin link — only for admin user */}
+        {userId === ADMIN_USER_ID && (
+          <div className="mt-3">
+            <button
+              onClick={() => router.push("/admin")}
+              className="w-full py-3.5 text-center font-semibold flex items-center justify-center gap-2"
+              style={{ background: "var(--surface)", color: "var(--nexio-green)" }}
+            >
+              <span>⚙️</span> Admin Dashboard
+            </button>
+          </div>
+        )}
 
         {/* Logout */}
         <div className="mt-3 mb-6">

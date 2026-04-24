@@ -1,11 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
-import { sendPaymentReceipt } from "@/lib/resend";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripeKey = process.env.STRIPE_SECRET_KEY ?? "";
+const STRIPE_ENABLED = stripeKey.startsWith("sk_") && stripeKey !== "sk_test_...";
 
 export async function POST(req: NextRequest) {
+  if (!STRIPE_ENABLED) {
+    return NextResponse.json(
+      { error: "payments_disabled", message: "Zahlungen sind noch nicht aktiviert." },
+      { status: 503 }
+    );
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -16,7 +22,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Mindestbetrag: 1,00 €" }, { status: 400 });
   }
 
-  // Get receiver info (users table only — no cross-schema join needed)
+  // Dynamic import to avoid module-level crash
+  const Stripe = (await import("stripe")).default;
+  const stripe = new Stripe(stripeKey);
+
   const { data: receiver } = await supabase
     .from("users")
     .select("id, display_name")
@@ -25,7 +34,6 @@ export async function POST(req: NextRequest) {
 
   if (!receiver) return NextResponse.json({ error: "Empfänger nicht gefunden" }, { status: 404 });
 
-  // Get or create Stripe customer for sender
   const { data: senderProfile } = await supabase
     .from("users")
     .select("stripe_customer_id")
@@ -39,7 +47,6 @@ export async function POST(req: NextRequest) {
     await supabase.from("users").update({ stripe_customer_id: customerId }).eq("id", user.id);
   }
 
-  // Create Payment Intent
   const paymentIntent = await stripe.paymentIntents.create({
     amount: amountCents,
     currency: "eur",
@@ -54,7 +61,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // Create payment record in DB
   const { data: payment } = await supabase
     .from("payments")
     .insert({
@@ -70,7 +76,6 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  // If in a conversation, send a payment message
   if (conversationId) {
     await supabase.from("messages").insert({
       conversation_id: conversationId,

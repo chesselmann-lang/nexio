@@ -1,15 +1,4 @@
 "use client";
-import {
-  LiveKitRoom,
-  VideoConference,
-  RoomAudioRenderer,
-  ControlBar,
-  useTracks,
-  ParticipantTile,
-  GridLayout,
-} from "@livekit/components-react";
-import "@livekit/components-styles";
-import { Track } from "livekit-client";
 import { useState, useEffect } from "react";
 
 interface CallViewProps {
@@ -20,6 +9,12 @@ interface CallViewProps {
   onLeave: () => void;
 }
 
+function formatDuration(s: number) {
+  const m = Math.floor(s / 60).toString().padStart(2, "0");
+  const sec = (s % 60).toString().padStart(2, "0");
+  return `${m}:${sec}`;
+}
+
 export default function CallView({
   roomName,
   callType,
@@ -27,9 +22,10 @@ export default function CallView({
   conversationName,
   onLeave,
 }: CallViewProps) {
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken]       = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]       = useState<string | null>(null);
+  const [disabled, setDisabled] = useState(false);
   const [duration, setDuration] = useState(0);
 
   useEffect(() => {
@@ -39,121 +35,129 @@ export default function CallView({
       body: JSON.stringify({ roomName, participantName }),
     })
       .then((r) => r.json())
-      .then(({ token, url }) => {
-        setToken(token);
-        setServerUrl(url);
+      .then((data) => {
+        if (data.error === "calls_disabled") {
+          setDisabled(true);
+        } else if (data.token) {
+          setToken(data.token);
+          setServerUrl(data.url);
+        } else {
+          setError("Verbindung fehlgeschlagen.");
+        }
       })
       .catch(() => setError("Verbindung fehlgeschlagen."));
   }, [roomName, participantName]);
 
   useEffect(() => {
+    if (!token) return;
     const interval = setInterval(() => setDuration((d) => d + 1), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
-  function formatDuration(s: number) {
-    const m = Math.floor(s / 60).toString().padStart(2, "0");
-    const sec = (s % 60).toString().padStart(2, "0");
-    return `${m}:${sec}`;
-  }
-
-  if (error) {
+  // ── Disabled state ──────────────────────────────────────────────────────────
+  if (disabled) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-black text-white gap-4">
-        <p className="text-red-400">{error}</p>
-        <button onClick={onLeave} className="px-6 py-2 bg-red-500 rounded-full text-sm">
-          Schließen
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 text-white">
+        <div className="text-6xl mb-6">📞</div>
+        <h2 className="text-xl font-bold mb-2">{conversationName}</h2>
+        <p className="text-gray-400 mb-6 text-sm text-center px-8">
+          Anrufe sind noch nicht aktiviert.
+          <br />
+          LiveKit-Konfiguration ausstehend.
+        </p>
+        <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-xs font-medium mb-8">
+          Coming soon
+        </span>
+        <button
+          onClick={onLeave}
+          className="w-14 h-14 rounded-full bg-red-500 flex items-center justify-center text-2xl shadow-lg"
+        >
+          ✕
         </button>
       </div>
     );
   }
 
-  if (!token || !serverUrl) {
+  // ── Error state ─────────────────────────────────────────────────────────────
+  if (error) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-black text-white gap-4">
-        <div className="w-12 h-12 border-2 border-green-400 border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm text-gray-400">Verbinde mit {conversationName}…</p>
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 text-white">
+        <div className="text-5xl mb-4">⚠️</div>
+        <p className="text-red-400 mb-6 text-sm">{error}</p>
+        <button onClick={onLeave} className="w-14 h-14 rounded-full bg-red-500 flex items-center justify-center text-2xl">✕</button>
       </div>
     );
   }
 
-  return (
-    <div className="h-full bg-black">
-      <LiveKitRoom
-        token={token}
-        serverUrl={serverUrl}
-        connect={true}
-        video={callType === "video"}
-        audio={true}
-        onDisconnected={onLeave}
-        style={{ height: "100dvh" }}
-      >
-        {/* Header */}
-        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-safe py-3">
-          <div>
-            <p className="text-white font-semibold">{conversationName}</p>
-            <p className="text-green-400 text-sm font-mono">{formatDuration(duration)}</p>
-          </div>
-          <div className="flex items-center gap-1 bg-green-500 rounded-full px-2 py-0.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-            <span className="text-white text-xs font-medium">Live</span>
-          </div>
-        </div>
-
-        {callType === "video" ? (
-          <VideoConference />
-        ) : (
-          /* Audio-only call UI */
-          <AudioCall conversationName={conversationName} duration={duration} />
-        )}
-
-        <RoomAudioRenderer />
-        <ControlBar />
-      </LiveKitRoom>
-    </div>
-  );
-}
-
-function AudioCall({ conversationName, duration }: { conversationName: string; duration: number }) {
-  function formatDuration(s: number) {
-    const m = Math.floor(s / 60).toString().padStart(2, "0");
-    const sec = (s % 60).toString().padStart(2, "0");
-    return `${m}:${sec}`;
+  // ── Loading state ────────────────────────────────────────────────────────────
+  if (!token || !serverUrl) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 text-white">
+        <div className="w-10 h-10 border-2 border-white/30 border-t-white rounded-full animate-spin mb-4" />
+        <p className="text-gray-400 text-sm">Verbinde…</p>
+      </div>
+    );
   }
 
+  // ── Live call — lazy-load LiveKit only when keys are present ─────────────────
+  return <LiveCallRoom token={token} serverUrl={serverUrl} callType={callType} conversationName={conversationName} duration={duration} onLeave={onLeave} />;
+}
+
+// Separate component so LiveKit bundle is only loaded when actually needed
+function LiveCallRoom({ token, serverUrl, callType, conversationName, duration, onLeave }: {
+  token: string; serverUrl: string; callType: "audio" | "video";
+  conversationName: string; duration: number; onLeave: () => void;
+}) {
+  const [LiveKitRoom, setLiveKitRoom] = useState<any>(null);
+
+  useEffect(() => {
+    import("@livekit/components-react").then((lk) => {
+      setLiveKitRoom(() => lk);
+    }).catch(() => {/* ignore */});
+  }, []);
+
+  if (!LiveKitRoom) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 text-white">
+        <div className="w-10 h-10 border-2 border-white/30 border-t-white rounded-full animate-spin mb-4" />
+        <p className="text-gray-400 text-sm">Lade Anruf…</p>
+      </div>
+    );
+  }
+
+  const { LiveKitRoom: Room, VideoConference, RoomAudioRenderer, ControlBar } = LiveKitRoom;
+
   return (
-    <div className="h-full flex flex-col items-center justify-center gap-6">
-      {/* Avatar */}
-      <div
-        className="w-28 h-28 rounded-full flex items-center justify-center text-4xl font-bold text-white shadow-2xl"
-        style={{ background: "#07c160" }}
+    <div className="fixed inset-0 z-50 bg-gray-900">
+      <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3 bg-black/50">
+        <div>
+          <p className="text-white font-semibold text-sm">{conversationName}</p>
+          <p className="text-gray-400 text-xs">{formatDuration(duration)}</p>
+        </div>
+        <button
+          onClick={onLeave}
+          className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center text-white text-sm font-bold"
+        >
+          ✕
+        </button>
+      </div>
+      <Room
+        token={token}
+        serverUrl={serverUrl}
+        options={{ adaptiveStream: true, dynacast: true }}
+        onDisconnected={onLeave}
+        style={{ height: "100%" }}
       >
-        {conversationName.slice(0, 1).toUpperCase()}
-      </div>
-      <div className="text-center">
-        <p className="text-white text-2xl font-semibold">{conversationName}</p>
-        <p className="text-green-400 text-lg font-mono mt-1">{formatDuration(duration)}</p>
-      </div>
-      {/* Animated sound bars */}
-      <div className="flex items-end gap-1 h-8">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <div
-            key={i}
-            className="w-1 rounded-full bg-green-400"
-            style={{
-              animation: `audioBar 1s ease-in-out infinite alternate`,
-              animationDelay: `${i * 0.12}s`,
-              height: `${20 + Math.sin(i) * 10}px`,
-            }}
-          />
-        ))}
-      </div>
-      <style>{`
-        @keyframes audioBar {
-          from { transform: scaleY(0.3); opacity: 0.5; }
-          to   { transform: scaleY(1);   opacity: 1; }
-        }
-      `}</style>
+        {callType === "video" ? <VideoConference /> : (
+          <div className="flex flex-col items-center justify-center h-full text-white gap-4">
+            <div className="w-24 h-24 rounded-full bg-gray-700 flex items-center justify-center text-4xl">🎤</div>
+            <p className="text-lg font-semibold">{conversationName}</p>
+            <p className="text-gray-400 text-sm">{formatDuration(duration)}</p>
+          </div>
+        )}
+        <RoomAudioRenderer />
+        <ControlBar />
+      </Room>
     </div>
   );
 }

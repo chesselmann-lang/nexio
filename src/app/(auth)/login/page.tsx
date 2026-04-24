@@ -159,7 +159,9 @@ export default function LoginPage() {
           </button>
           <p className="text-xs text-center text-gray-400">
             Mit der Anmeldung akzeptierst du unsere{" "}
-            <Link href="/datenschutz" className="underline">Datenschutzerklärung</Link>
+            <Link href="/agb" className="underline">AGB</Link>
+            {" "}·{" "}
+            <Link href="/datenschutz" className="underline">Datenschutz</Link>
             {" "}·{" "}
             <Link href="/impressum" className="underline">Impressum</Link>
           </p>

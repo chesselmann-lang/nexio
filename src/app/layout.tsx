@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import PWARegister from "@/components/PWARegister";
+import CookieBanner from "@/components/CookieBanner";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
@@ -46,6 +47,7 @@ export default function RootLayout({
       <body className="h-full antialiased">
         {children}
         <PWARegister />
+        <CookieBanner />
       </body>
     </html>
   );

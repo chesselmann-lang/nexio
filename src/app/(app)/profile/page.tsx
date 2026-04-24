@@ -10,5 +10,5 @@ export default async function ProfilePage() {
     .eq("id", user!.id)
     .single();
 
-  return <ProfileClient profile={profile as any} />;
+  return <ProfileClient profile={profile as any} userId={user!.id} />;
 }
