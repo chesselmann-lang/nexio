@@ -167,6 +167,77 @@ function formatDur(s: number) {
   return `${Math.floor(s / 60).toString().padStart(2, "0")}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 }
 
+const TRANSLATE_LANGS = [
+  { code: "de", label: "DE 🇩🇪" }, { code: "en", label: "EN 🇬🇧" },
+  { code: "es", label: "ES 🇪🇸" }, { code: "fr", label: "FR 🇫🇷" },
+  { code: "zh", label: "ZH 🇨🇳" }, { code: "ja", label: "JA 🇯🇵" },
+  { code: "ar", label: "AR 🇸🇦" }, { code: "tr", label: "TR 🇹🇷" },
+];
+
+function TranslateButton({ msgId, text }: { msgId: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  const [lang, setLang] = useState("en");
+  const [translation, setTranslation] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function translate(targetLang: string) {
+    setLang(targetLang);
+    setLoading(true);
+    setTranslation(null);
+    try {
+      const res = await fetch("/api/ai/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: msgId, text, targetLang }),
+      });
+      const data = await res.json();
+      setTranslation(data.translation ?? null);
+    } catch { setTranslation("Übersetzung fehlgeschlagen"); }
+    setLoading(false);
+  }
+
+  return (
+    <div className="mt-1">
+      {!open ? (
+        <button
+          onClick={() => { setOpen(true); translate(lang); }}
+          className="text-[10px] px-2 py-0.5 rounded-full"
+          style={{ color: "var(--foreground-3)", background: "var(--surface-2)" }}
+        >
+          🌐 Übersetzen
+        </button>
+      ) : (
+        <div className="space-y-1">
+          {/* Language selector */}
+          <div className="flex gap-1 flex-wrap">
+            {TRANSLATE_LANGS.map((l) => (
+              <button key={l.code} onClick={() => translate(l.code)}
+                className="text-[10px] px-1.5 py-0.5 rounded-full transition-colors"
+                style={{
+                  background: lang === l.code ? "var(--nexio-green)" : "var(--surface-2)",
+                  color: lang === l.code ? "white" : "var(--foreground-3)",
+                }}>
+                {l.label}
+              </button>
+            ))}
+            <button onClick={() => { setOpen(false); setTranslation(null); }}
+              className="text-[10px] px-1.5 py-0.5 rounded-full"
+              style={{ background: "var(--surface-2)", color: "var(--foreground-3)" }}>✕</button>
+          </div>
+          {/* Translation */}
+          {loading && <p className="text-xs italic" style={{ color: "var(--foreground-3)" }}>Übersetze…</p>}
+          {translation && !loading && (
+            <div className="text-xs px-2 py-1 rounded-xl italic"
+              style={{ background: "var(--surface-2)", color: "var(--foreground-2)" }}>
+              {translation}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({
   msg,
   isOwn,
@@ -212,9 +283,14 @@ function MessageBubble({
 
             {/* Text */}
             {msg.type === "text" && (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                {msg.content}
-              </p>
+              <>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                  {msg.content}
+                </p>
+                {msg.content && msg.content.length > 5 && !msg.content.startsWith("📍") && (
+                  <TranslateButton msgId={msg.id} text={msg.content} />
+                )}
+              </>
             )}
 
             {/* Image */}
@@ -347,6 +423,7 @@ export default function ChatView({
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -661,7 +738,10 @@ export default function ChatView({
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        <div className="flex-1 min-w-0">
+        <button
+          className="flex-1 min-w-0 text-left"
+          onClick={() => conversation.type === "group" && setShowGroupInfo(true)}
+        >
           <p className="font-semibold truncate" style={{ color: "var(--foreground)" }}>
             {name}
           </p>
@@ -671,11 +751,13 @@ export default function ChatView({
             </p>
           ) : (
             <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
-              {conversation.members?.length ?? 1} Mitglied
-              {(conversation.members?.length ?? 1) !== 1 ? "er" : ""}
+              {conversation.type === "group"
+                ? `👥 ${conversation.members?.length ?? 1} Mitglieder — tippen für Details`
+                : `${conversation.members?.length ?? 1} Mitglied${(conversation.members?.length ?? 1) !== 1 ? "er" : ""}`
+              }
             </p>
           )}
-        </div>
+        </button>
         {/* Call buttons */}
         <button
           onClick={() => startCall("audio")}
@@ -836,6 +918,60 @@ export default function ChatView({
       {/* Image Lightbox */}
       {lightboxUrl && (
         <ImageViewer url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      )}
+
+      {/* Group Info Sheet */}
+      {showGroupInfo && conversation.type === "group" && (
+        <div className="fixed inset-0 z-40" onClick={() => setShowGroupInfo(false)}>
+          <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl pb-safe max-h-[70vh] overflow-hidden flex flex-col"
+            style={{ background: "var(--surface)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-2" style={{ background: "var(--border)" }} />
+            <div className="px-4 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
+              <h3 className="font-bold text-base" style={{ color: "var(--foreground)" }}>{name}</h3>
+              <p className="text-sm" style={{ color: "var(--foreground-3)" }}>
+                {conversation.members?.length ?? 0} Mitglieder · max. 500
+              </p>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {(conversation.members ?? []).map((m: any) => {
+                const u: User = m.user as User;
+                if (!u) return null;
+                return (
+                  <div key={m.user_id} className="flex items-center gap-3 px-4 py-3 border-b"
+                    style={{ borderColor: "var(--border)" }}>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-none"
+                      style={{ background: "#07c160" }}>
+                      {u.display_name?.slice(0, 1) ?? "?"}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
+                        {u.display_name}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: "var(--foreground-3)" }}>
+                        @{u.username} {m.role === "owner" ? "· 👑 Admin" : ""}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="px-4 py-3">
+              <button
+                onClick={async () => {
+                  const supabase = createClient();
+                  await supabase.from("conversation_members")
+                    .delete().eq("conversation_id", conversation.id).eq("user_id", currentUserId);
+                  router.replace("/chats");
+                }}
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-red-500"
+                style={{ background: "var(--surface-2)" }}
+              >
+                Gruppe verlassen
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Upload Progress Bar */}

@@ -67,10 +67,14 @@ export default function NewChatPage() {
     return () => clearTimeout(timer);
   }, [search, currentUserId]);
 
+  const MAX_GROUP_MEMBERS = 500;
+
   function toggleUser(user: User) {
-    setSelected((prev) =>
-      prev.find((u) => u.id === user.id) ? prev.filter((u) => u.id !== user.id) : [...prev, user]
-    );
+    setSelected((prev) => {
+      if (prev.find((u) => u.id === user.id)) return prev.filter((u) => u.id !== user.id);
+      if (prev.length >= MAX_GROUP_MEMBERS) { alert(`Maximale Gruppengröße: ${MAX_GROUP_MEMBERS} Mitglieder`); return prev; }
+      return [...prev, user];
+    });
   }
 
   async function startConversation() {
@@ -156,9 +160,16 @@ export default function NewChatPage() {
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        <h1 className="flex-1 text-base font-semibold" style={{ color: "var(--foreground)" }}>
-          {isGroup ? "Neue Gruppe" : "Neuer Chat"}
-        </h1>
+        <div className="flex-1">
+          <h1 className="text-base font-semibold" style={{ color: "var(--foreground)" }}>
+            {isGroup ? "Neue Gruppe" : "Neuer Chat"}
+          </h1>
+          {isGroup && selected.length > 0 && (
+            <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
+              {selected.length}/{MAX_GROUP_MEMBERS} Mitglieder
+            </p>
+          )}
+        </div>
         {selected.length > 0 && (
           <button
             onClick={startConversation}
