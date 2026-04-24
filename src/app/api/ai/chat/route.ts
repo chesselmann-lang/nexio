@@ -6,7 +6,6 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
 
-export const runtime = "edge";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {

@@ -122,6 +122,144 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["payments"]["Row"]>;
       };
+      mini_apps: {
+        Row: {
+          id: string;
+          slug: string;
+          name: string;
+          description: string | null;
+          icon_url: string | null;
+          developer_id: string | null;
+          entry_url: string;
+          permissions: Json;
+          is_verified: boolean;
+          is_active: boolean;
+          install_count: number;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["mini_apps"]["Row"]> & {
+          slug: string;
+          name: string;
+          entry_url: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["mini_apps"]["Row"]>;
+      };
+      ai_sessions: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          system_prompt: string | null;
+          last_message_at: string;
+          message_count: number;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["ai_sessions"]["Row"]> & { user_id: string; };
+        Update: Partial<Database["public"]["Tables"]["ai_sessions"]["Row"]>;
+      };
+      ai_messages: {
+        Row: {
+          id: string;
+          session_id: string;
+          role: "user" | "assistant";
+          content: string;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["ai_messages"]["Row"]> & {
+          session_id: string;
+          role: "user" | "assistant";
+          content: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["ai_messages"]["Row"]>;
+      };
+      channels: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          avatar_url: string | null;
+          subscriber_count: number;
+          verified: boolean;
+          category: string | null;
+          is_active: boolean;
+          owner_id: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["channels"]["Row"]> & { name: string; };
+        Update: Partial<Database["public"]["Tables"]["channels"]["Row"]>;
+      };
+      channel_members: {
+        Row: {
+          id: string;
+          channel_id: string;
+          user_id: string;
+          joined_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["channel_members"]["Row"]> & {
+          channel_id: string;
+          user_id: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["channel_members"]["Row"]>;
+      };
+      channel_posts: {
+        Row: {
+          id: string;
+          channel_id: string;
+          content: string | null;
+          media_urls: string[] | null;
+          likes_count: number;
+          comments_count: number;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["channel_posts"]["Row"]> & { channel_id: string; };
+        Update: Partial<Database["public"]["Tables"]["channel_posts"]["Row"]>;
+      };
+      stories: {
+        Row: {
+          id: string;
+          author_id: string;
+          content: string | null;
+          media_url: string | null;
+          media_type: string | null;
+          likes: string[];
+          views: string[];
+          expires_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["stories"]["Row"]> & { author_id: string; };
+        Update: Partial<Database["public"]["Tables"]["stories"]["Row"]>;
+      };
+      push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string | null;
+          auth: string | null;
+          updated_at: string;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["push_subscriptions"]["Row"]> & {
+          user_id: string;
+          endpoint: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["push_subscriptions"]["Row"]>;
+      };
+      message_translations: {
+        Row: {
+          id: string;
+          message_id: string;
+          target_lang: string;
+          translation: string;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["message_translations"]["Row"]> & {
+          message_id: string;
+          target_lang: string;
+          translation: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["message_translations"]["Row"]>;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

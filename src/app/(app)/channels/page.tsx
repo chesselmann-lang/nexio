@@ -24,7 +24,7 @@ export default async function ChannelsPage() {
   return (
     <ChannelsFeed
       following={(following ?? []).map((f: any) => f.channel).filter(Boolean)}
-      trending={trending ?? []}
+      trending={(trending ?? []) as any}
       currentUserId={user.id}
     />
   );

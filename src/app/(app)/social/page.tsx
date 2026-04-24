@@ -15,5 +15,6 @@ export default async function SocialPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
-  return <StoriesFeed initialStories={stories ?? []} currentUserId={user.id} />;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return <StoriesFeed initialStories={(stories ?? []) as any} currentUserId={user.id} />;
 }
