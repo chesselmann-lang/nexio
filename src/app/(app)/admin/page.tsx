@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { ModerationQueue, UserManagement, BusinessVerification } from "./AdminModeration";
 
 // Only this user ID can access admin
 const ADMIN_USER_ID = "152f5271-385e-40f5-8d9e-ecedee59525b";
@@ -91,6 +92,29 @@ export default async function AdminPage() {
     .order("last_message_at", { ascending: false })
     .limit(5);
 
+  // Pending reports
+  const { data: pendingReports } = await supabase
+    .from("reports")
+    .select("id, target_type, target_id, reason, detail, created_at, reporter:users!reports_reporter_id_fkey(username)")
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  // All users for management
+  const { data: allUsers } = await supabase
+    .from("users")
+    .select("id, display_name, username, created_at, is_banned, status")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  // Channels pending business verification
+  const { data: pendingBusiness } = await supabase
+    .from("channels")
+    .select("id, name, business_type, website, is_business, created_at")
+    .eq("is_business", false)
+    .not("business_type", "is", null)
+    .limit(10);
+
   return (
     <div className="min-h-screen" style={{ background: "var(--background)" }}>
       {/* Header */}
@@ -157,6 +181,45 @@ export default async function AdminPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Moderation Queue */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2"
+            style={{ color: "var(--foreground-3)" }}>
+            Meldungen
+            {(pendingReports?.length ?? 0) > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] text-white font-bold"
+                style={{ background: "#ef4444" }}>
+                {pendingReports?.length}
+              </span>
+            )}
+          </h2>
+          <ModerationQueue reports={pendingReports ?? []} />
+        </section>
+
+        {/* Business Verification */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2"
+            style={{ color: "var(--foreground-3)" }}>
+            Business-Verifizierung
+            {(pendingBusiness?.length ?? 0) > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] text-white font-bold"
+                style={{ background: "#1677ff" }}>
+                {pendingBusiness?.length}
+              </span>
+            )}
+          </h2>
+          <BusinessVerification channels={pendingBusiness ?? []} />
+        </section>
+
+        {/* User Management */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider mb-3"
+            style={{ color: "var(--foreground-3)" }}>
+            Nutzerverwaltung ({allUsers?.length ?? 0})
+          </h2>
+          <UserManagement users={allUsers ?? []} />
         </section>
 
         {/* Recent Users */}
