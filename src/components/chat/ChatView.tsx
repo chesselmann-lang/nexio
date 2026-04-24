@@ -10,6 +10,85 @@ import ReactionPicker, { ReactionBar } from "./ReactionPicker";
 import { useTyping, formatTypingText } from "@/hooks/useTyping";
 import CallView from "@/components/calls/CallView";
 
+// ── Media Picker Sheet ────────────────────────────────────────────────────────
+function MediaPickerSheet({
+  onClose,
+  onImage,
+  onVideo,
+  onFile,
+  onLocation,
+}: {
+  onClose: () => void;
+  onImage: () => void;
+  onVideo: () => void;
+  onFile: () => void;
+  onLocation: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-40" onClick={onClose}>
+      <div
+        className="absolute bottom-0 left-0 right-0 rounded-t-3xl pb-safe"
+        style={{ background: "var(--surface)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{ background: "var(--border)" }} />
+        <p className="text-xs font-semibold uppercase tracking-wider text-center mb-4" style={{ color: "var(--foreground-3)" }}>Medien senden</p>
+        <div className="grid grid-cols-4 gap-4 px-6 pb-8">
+          {[
+            { icon: "🖼", label: "Galerie", action: onImage, bg: "#1677ff20", color: "#1677ff" },
+            { icon: "🎥", label: "Video", action: onVideo, bg: "#9333ea20", color: "#9333ea" },
+            { icon: "📄", label: "Dokument", action: onFile, bg: "#f59e0b20", color: "#f59e0b" },
+            { icon: "📍", label: "Standort", action: onLocation, bg: "#07c16020", color: "#07c160" },
+          ].map((item) => (
+            <button
+              key={item.label}
+              onClick={() => { item.action(); onClose(); }}
+              className="flex flex-col items-center gap-2"
+            >
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl"
+                style={{ background: item.bg }}>
+                {item.icon}
+              </div>
+              <span className="text-xs" style={{ color: "var(--foreground-2)" }}>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Image Fullscreen Viewer ───────────────────────────────────────────────────
+function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.92)" }}
+      onClick={onClose}
+    >
+      <button className="absolute top-4 right-4 text-white text-3xl opacity-70">✕</button>
+      <img
+        src={url}
+        alt="Vollbild"
+        className="max-w-full max-h-full object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+// ── Upload Progress Overlay ───────────────────────────────────────────────────
+function UploadProgress({ progress }: { progress: number }) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1">
+      <div className="flex-1 rounded-full overflow-hidden h-1" style={{ background: "var(--border)" }}>
+        <div className="h-1 rounded-full transition-all" style={{ width: `${progress}%`, background: "var(--nexio-green)" }} />
+      </div>
+      <span className="text-xs" style={{ color: "var(--foreground-3)" }}>{progress}%</span>
+    </div>
+  );
+}
+
 // ── Media Upload Helper ───────────────────────────────────────────────────────
 async function uploadMedia(
   supabase: ReturnType<typeof createClient>,
@@ -84,18 +163,24 @@ function TypingDots() {
   );
 }
 
+function formatDur(s: number) {
+  return `${Math.floor(s / 60).toString().padStart(2, "0")}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
+}
+
 function MessageBubble({
   msg,
   isOwn,
   showAvatar,
   currentUserId,
   onReact,
+  onImageClick,
 }: {
   msg: MessageWithSender;
   isOwn: boolean;
   showAvatar: boolean;
   currentUserId: string;
   onReact: (msgId: string, emoji: string) => void;
+  onImageClick: (url: string) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
 
@@ -137,7 +222,8 @@ function MessageBubble({
               <img
                 src={msg.media_url}
                 alt="Bild"
-                className="rounded-lg max-w-full max-h-64 object-cover"
+                className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer active:opacity-80"
+                onClick={() => onImageClick(msg.media_url!)}
               />
             )}
 
@@ -152,17 +238,22 @@ function MessageBubble({
 
             {/* Audio / Voice */}
             {msg.type === "audio" && msg.media_url && (
-              <div className="flex items-center gap-2 min-w-[180px]">
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="flex-none opacity-60"
-                >
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                </svg>
-                <audio src={msg.media_url} controls className="h-8 flex-1" />
+              <div className="flex items-center gap-2 min-w-[160px]">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center flex-none"
+                  style={{ background: isOwn ? "rgba(255,255,255,0.2)" : "var(--nexio-green)" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="white" fill="none" strokeWidth="2" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <audio src={msg.media_url} controls className="h-7 w-full" style={{ maxWidth: 160 }} />
+                  {(msg.media_metadata as any)?.duration && (
+                    <p className="text-[10px] mt-0.5 opacity-60">
+                      🎙 {formatDur((msg.media_metadata as any).duration)}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -253,8 +344,13 @@ export default function ChatView({
   const [showVoice, setShowVoice] = useState(false);
   const [typingUsers, setTypingUsers] = useState<{ userId: string; displayName: string }[]>([]);
   const [activeCall, setActiveCall] = useState<{ type: "audio" | "video"; roomName: string } | null>(null);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
 
   const name = getConversationName(conversation, currentUserId);
 
@@ -345,6 +441,7 @@ export default function ChatView({
   async function handleVoiceSend(blob: Blob, duration: number) {
     setShowVoice(false);
     setSending(true);
+    setUploadProgress(10);
     try {
       const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type });
       const blobUrl = URL.createObjectURL(blob);
@@ -367,7 +464,9 @@ export default function ChatView({
       };
       setMessages((prev) => [...prev, optimistic]);
 
+      setUploadProgress(40);
       const mediaUrl = await uploadMedia(supabase, file, conversation.id);
+      setUploadProgress(80);
       const { data } = await supabase
         .from("messages")
         .insert({
@@ -392,11 +491,13 @@ export default function ChatView({
       console.error("Voice upload failed:", e);
     }
     setSending(false);
+    setUploadProgress(null);
   }
 
   // ── Send media file ───────────────────────────────────────────────────────
   async function sendMediaMessage(file: File) {
     setSending(true);
+    setUploadProgress(10);
     try {
       const isImage = file.type.startsWith("image/");
       const isVideo = file.type.startsWith("video/");
@@ -421,7 +522,9 @@ export default function ChatView({
       };
       setMessages((prev) => [...prev, optimistic]);
 
+      setUploadProgress(40);
       const mediaUrl = await uploadMedia(supabase, file, conversation.id);
+      setUploadProgress(80);
       const { data } = await supabase
         .from("messages")
         .insert({
@@ -446,6 +549,7 @@ export default function ChatView({
       console.error("Media upload failed:", e);
     }
     setSending(false);
+    setUploadProgress(null);
   }
 
   // ── Send text message ─────────────────────────────────────────────────────
@@ -503,6 +607,22 @@ export default function ChatView({
       e.preventDefault();
       sendMessage();
     }
+  }
+
+  // ── Share location ────────────────────────────────────────────────────────
+  async function shareLocation() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      const content = `📍 Standort geteilt\nhttps://maps.google.com/?q=${lat},${lng}`;
+      const { data } = await supabase.from("messages").insert({
+        conversation_id: conversation.id,
+        sender_id: currentUserId,
+        type: "text",
+        content,
+      }).select().single();
+      if (data) setMessages((prev) => [...prev, { ...data, sender: { id: currentUserId } as User } as MessageWithSender]);
+    }, () => alert("Standort nicht verfügbar"));
   }
 
   // ── Start a call ──────────────────────────────────────────────────────────
@@ -591,6 +711,7 @@ export default function ChatView({
               showAvatar={idx === 0 || messages[idx - 1].sender_id !== msg.sender_id}
               currentUserId={currentUserId}
               onReact={handleReact}
+              onImageClick={setLightboxUrl}
             />
           </div>
         ))}
@@ -615,25 +736,24 @@ export default function ChatView({
           className="flex-none flex items-end gap-2 px-3 py-2 pb-safe border-t"
           style={{ background: "var(--surface)", borderColor: "var(--border)" }}
         >
-          {/* Attachment */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*,.pdf,.doc,.docx"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) sendMediaMessage(file);
-              e.target.value = "";
-            }}
-          />
+          {/* Hidden file inputs */}
+          <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) sendMediaMessage(f); e.target.value = ""; }} />
+          <input ref={videoInputRef} type="file" accept="video/*" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) sendMediaMessage(f); e.target.value = ""; }} />
+          <input ref={docInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) sendMediaMessage(f); e.target.value = ""; }} />
+
+          {/* Attachment — opens media picker */}
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setShowMediaPicker(true)}
             className="w-9 h-9 flex items-center justify-center rounded-full mb-0.5"
             style={{ color: "var(--foreground-3)" }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="16" />
+              <line x1="8" y1="12" x2="16" y2="12" />
             </svg>
           </button>
 
@@ -699,6 +819,31 @@ export default function ChatView({
             conversationName={name}
             onLeave={() => setActiveCall(null)}
           />
+        </div>
+      )}
+
+      {/* Media Picker Sheet */}
+      {showMediaPicker && (
+        <MediaPickerSheet
+          onClose={() => setShowMediaPicker(false)}
+          onImage={() => fileInputRef.current?.click()}
+          onVideo={() => videoInputRef.current?.click()}
+          onFile={() => docInputRef.current?.click()}
+          onLocation={shareLocation}
+        />
+      )}
+
+      {/* Image Lightbox */}
+      {lightboxUrl && (
+        <ImageViewer url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+      )}
+
+      {/* Upload Progress Bar */}
+      {uploadProgress !== null && (
+        <div className="fixed bottom-24 left-4 right-4 z-40 rounded-2xl px-4 py-2"
+          style={{ background: "var(--surface)", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }}>
+          <p className="text-xs mb-1" style={{ color: "var(--foreground-2)" }}>Hochladen…</p>
+          <UploadProgress progress={uploadProgress} />
         </div>
       )}
     </div>
