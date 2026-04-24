@@ -2,14 +2,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
 type Step = "phone" | "otp";
+type Method = "phone" | "email";
 
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
+  const [method, setMethod] = useState<Method>("email");
   const [step, setStep] = useState<Step>("phone");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -44,7 +49,30 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    // Check if profile exists
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("users")
+        .select("id, username")
+        .eq("id", data.user.id)
+        .single();
+      if (!profile?.username || profile.username.startsWith("user_")) {
+        router.replace("/onboarding");
+      } else {
+        router.replace("/chats");
+      }
+    }
+    setLoading(false);
+  }
+
+  async function signInWithEmail() {
+    setLoading(true);
+    setError("");
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      return;
+    }
     if (data.user) {
       const { data: profile } = await supabase
         .from("users")
@@ -74,7 +102,70 @@ export default function LoginPage() {
         <p className="text-gray-500 text-sm mt-1">Dein europäischer Super-App</p>
       </div>
 
-      {step === "phone" ? (
+      {/* Method toggle */}
+      <div className="w-full max-w-sm mb-4 flex rounded-xl border border-gray-200 overflow-hidden">
+        <button
+          onClick={() => { setMethod("email"); setError(""); }}
+          className="flex-1 py-2 text-sm font-medium transition-colors"
+          style={method === "email" ? { background: "var(--nexio-green)", color: "#fff" } : { color: "#6b7280" }}
+        >
+          E-Mail
+        </button>
+        <button
+          onClick={() => { setMethod("phone"); setError(""); setStep("phone"); }}
+          className="flex-1 py-2 text-sm font-medium transition-colors"
+          style={method === "phone" ? { background: "var(--nexio-green)", color: "#fff" } : { color: "#6b7280" }}
+        >
+          Telefon
+        </button>
+      </div>
+
+      {method === "email" ? (
+        /* ── Email / Password Login ── */
+        <div className="w-full max-w-sm space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">E-Mail</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && signInWithEmail()}
+              placeholder="deine@email.de"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-base focus:ring-2 focus:border-transparent"
+              style={{ "--tw-ring-color": "var(--nexio-green)" } as React.CSSProperties}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Passwort</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && signInWithEmail()}
+              placeholder="••••••••"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-base focus:ring-2 focus:border-transparent"
+              style={{ "--tw-ring-color": "var(--nexio-green)" } as React.CSSProperties}
+            />
+          </div>
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+          <button
+            onClick={signInWithEmail}
+            disabled={!email || !password || loading}
+            className="w-full py-3 rounded-xl text-white font-semibold text-base disabled:opacity-50 transition-opacity"
+            style={{ background: "var(--nexio-green)" }}
+          >
+            {loading ? "Anmelden…" : "Anmelden"}
+          </button>
+          <p className="text-xs text-center text-gray-400">
+            Mit der Anmeldung akzeptierst du unsere{" "}
+            <Link href="/datenschutz" className="underline">Datenschutzerklärung</Link>
+            {" "}·{" "}
+            <Link href="/impressum" className="underline">Impressum</Link>
+          </p>
+        </div>
+      ) : step === "phone" ? (
+        /* ── Phone OTP Step 1 ── */
         <div className="w-full max-w-sm space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -105,11 +196,13 @@ export default function LoginPage() {
           </button>
           <p className="text-xs text-center text-gray-400">
             Mit der Anmeldung akzeptierst du unsere{" "}
-            <a href="/agb" className="underline">AGB</a> und{" "}
-            <a href="/datenschutz" className="underline">Datenschutzerklärung</a>.
+            <Link href="/datenschutz" className="underline">Datenschutzerklärung</Link>
+            {" "}·{" "}
+            <Link href="/impressum" className="underline">Impressum</Link>
           </p>
         </div>
       ) : (
+        /* ── Phone OTP Step 2 ── */
         <div className="w-full max-w-sm space-y-4">
           <div>
             <button
