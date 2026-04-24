@@ -23,6 +23,7 @@ const MENU_SECTIONS = [
   {
     items: [
       { icon: "🧩", label: "Mini-Programme", href: "/mini-apps", badge: "NEU" },
+      { icon: "💸", label: "Nexio Pay", href: "/pay", badge: "NEU" },
       { icon: "💼", label: "Business-Modus", href: "/business" },
       { icon: "💰", label: "Preise & Pläne", href: "/pricing" },
       { icon: "🔗", label: "Verbundene Apps", href: "/settings/integrations" },

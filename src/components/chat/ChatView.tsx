@@ -10,6 +10,7 @@ import ReactionPicker, { ReactionBar } from "./ReactionPicker";
 import { useTyping, formatTypingText } from "@/hooks/useTyping";
 import CallView from "@/components/calls/CallView";
 import UserActionsMenu from "@/components/UserActionsMenu";
+import { useE2E } from "@/lib/e2e/useE2E";
 
 // ── Media Picker Sheet ────────────────────────────────────────────────────────
 function MediaPickerSheet({
@@ -255,6 +256,23 @@ function MessageBubble({
   onImageClick: (url: string) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  const [imgDescription, setImgDescription] = useState<string | null>(null);
+  const [descLoading, setDescLoading] = useState(false);
+
+  async function describeImage() {
+    if (!msg.media_url) return;
+    setDescLoading(true);
+    try {
+      const res = await fetch("/api/ai/describe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: msg.media_url }),
+      });
+      const data = await res.json();
+      setImgDescription(data.description ?? "Keine Beschreibung verfügbar");
+    } catch { setImgDescription("Fehler beim Laden"); }
+    setDescLoading(false);
+  }
 
   return (
     <div className={`flex flex-col ${isOwn ? "items-end" : "items-start"} px-3 mb-1`}>
@@ -296,12 +314,23 @@ function MessageBubble({
 
             {/* Image */}
             {msg.type === "image" && msg.media_url && (
-              <img
-                src={msg.media_url}
-                alt="Bild"
-                className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer active:opacity-80"
-                onClick={() => onImageClick(msg.media_url!)}
-              />
+              <div>
+                <img
+                  src={msg.media_url}
+                  alt="Bild"
+                  className="rounded-lg max-w-full max-h-64 object-cover cursor-pointer active:opacity-80"
+                  onClick={() => onImageClick(msg.media_url!)}
+                />
+                {imgDescription ? (
+                  <p className="text-xs mt-1 opacity-80 italic">{imgDescription}</p>
+                ) : (
+                  <button onClick={describeImage} disabled={descLoading}
+                    className="text-[10px] mt-1 px-2 py-0.5 rounded-full"
+                    style={{ background: "rgba(0,0,0,0.15)", color: "inherit", opacity: descLoading ? 0.5 : 1 }}>
+                    {descLoading ? "✨ Beschreibe…" : "✨ KI-Beschreibung"}
+                  </button>
+                )}
+              </div>
             )}
 
             {/* Video */}
@@ -425,7 +454,18 @@ export default function ChatView({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [decryptedContents, setDecryptedContents] = useState<Map<string, string>>(new Map());
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const speechRef = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // E2E — only for direct (1:1) conversations
+  const peerUserId = conversation.type === "direct"
+    ? conversation.members?.find((m: any) => m.user_id !== currentUserId)?.user_id ?? null
+    : null;
+  const e2e = useE2E(currentUserId, peerUserId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
@@ -490,6 +530,29 @@ export default function ChatView({
 
     return () => { supabase.removeChannel(channel); };
   }, [conversation.id, currentUserId]);
+
+  // Decrypt E2E messages whenever e2e becomes ready or messages change
+  useEffect(() => {
+    if (!e2e.ready) return;
+    const e2eMsgs = messages.filter((m) => (m as any).is_e2e && !(decryptedContents.has(m.id)));
+    if (e2eMsgs.length === 0) return;
+    Promise.all(
+      e2eMsgs.map(async (m) => {
+        try {
+          const plain = await e2e.decrypt(m.content ?? "");
+          return [m.id, plain] as [string, string];
+        } catch {
+          return [m.id, "🔒 [Verschlüsselt]"] as [string, string];
+        }
+      })
+    ).then((pairs) => {
+      setDecryptedContents((prev) => {
+        const next = new Map(prev);
+        pairs.forEach(([id, plain]) => next.set(id, plain));
+        return next;
+      });
+    });
+  }, [e2e.ready, messages]);
 
   // ── React to message ──────────────────────────────────────────────────────
   async function handleReact(msgId: string, emoji: string) {
@@ -633,17 +696,24 @@ export default function ChatView({
   // ── Send text message ─────────────────────────────────────────────────────
   async function sendMessage() {
     if (!text.trim() || sending) return;
-    const content = text.trim();
+    const plainContent = text.trim();
     setText("");
     clearTyping();
     setSending(true);
+
+    // E2E: encrypt if both parties have keys
+    const isE2E = e2e.enabled && e2e.ready;
+    let storedContent = plainContent;
+    if (isE2E) {
+      try { storedContent = await e2e.encrypt(plainContent); } catch { /* fall through unencrypted */ }
+    }
 
     const optimistic: MessageWithSender = {
       id: `tmp-${Date.now()}`,
       conversation_id: conversation.id,
       sender_id: currentUserId,
       type: "text",
-      content,
+      content: plainContent, // show plaintext optimistically
       media_url: null,
       media_metadata: null,
       reply_to_id: null,
@@ -655,6 +725,9 @@ export default function ChatView({
       sender: { id: currentUserId } as User,
     };
     setMessages((prev) => [...prev, optimistic]);
+    if (isE2E) {
+      setDecryptedContents((prev) => new Map(prev).set(optimistic.id, plainContent));
+    }
 
     const { data, error } = await supabase
       .from("messages")
@@ -662,20 +735,29 @@ export default function ChatView({
         conversation_id: conversation.id,
         sender_id: currentUserId,
         type: "text",
-        content,
+        content: storedContent,
+        ...(isE2E ? { is_e2e: true } : {}),
       })
       .select()
       .single();
 
     if (error) {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-      setText(content);
+      setText(plainContent);
     } else {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === optimistic.id ? { ...data, sender: optimistic.sender } as MessageWithSender : m
         )
       );
+      if (isE2E && data) {
+        setDecryptedContents((prev) => {
+          const next = new Map(prev);
+          next.delete(optimistic.id);
+          next.set(data.id, plainContent);
+          return next;
+        });
+      }
     }
     setSending(false);
   }
@@ -685,6 +767,52 @@ export default function ChatView({
       e.preventDefault();
       sendMessage();
     }
+  }
+
+  // ── Chat Summary ──────────────────────────────────────────────────────────
+  async function summarizeChat() {
+    if (summarizing) { setSummary(null); return; }
+    setSummarizing(true);
+    setSummary(null);
+    try {
+      const res = await fetch("/api/ai/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: conversation.id }),
+      });
+      const data = await res.json();
+      setSummary(data.summary ?? "Keine Zusammenfassung verfügbar.");
+    } catch {
+      setSummary("Zusammenfassung fehlgeschlagen.");
+    }
+    setSummarizing(false);
+  }
+
+  // ── Voice-to-text (Web Speech API) ───────────────────────────────────────
+  function toggleSpeechInput() {
+    if (typeof window === "undefined") return;
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) { alert("Spracheingabe wird von diesem Browser nicht unterstützt."); return; }
+
+    if (isListening) {
+      speechRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const recognition = new SpeechRec();
+    speechRef.current = recognition;
+    recognition.lang = "de-DE";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (e: any) => {
+      const transcript = e.results[0]?.[0]?.transcript ?? "";
+      setText((prev) => prev + (prev ? " " : "") + transcript);
+    };
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = () => setIsListening(false);
+    recognition.start();
+    setIsListening(true);
   }
 
   // ── Share location ────────────────────────────────────────────────────────
@@ -751,10 +879,11 @@ export default function ChatView({
               {typingText}
             </p>
           ) : (
-            <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
+            <p className="text-xs flex items-center gap-1" style={{ color: "var(--foreground-3)" }}>
+              {e2e.enabled && <span title="Ende-zu-Ende verschlüsselt">🔒</span>}
               {conversation.type === "group"
                 ? `👥 ${conversation.members?.length ?? 1} Mitglieder — tippen für Details`
-                : `${conversation.members?.length ?? 1} Mitglied${(conversation.members?.length ?? 1) !== 1 ? "er" : ""}`
+                : e2e.enabled ? "Ende-zu-Ende verschlüsselt" : `${conversation.members?.length ?? 1} Mitglied${(conversation.members?.length ?? 1) !== 1 ? "er" : ""}`
               }
             </p>
           )}
@@ -781,6 +910,15 @@ export default function ChatView({
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
           </svg>
         </button>
+        {/* KI Chat-Zusammenfassung */}
+        <button onClick={summarizeChat}
+          className="w-8 h-8 flex items-center justify-center rounded-full"
+          style={{ color: summarizing ? "var(--nexio-green)" : "var(--foreground-2)" }}
+          title="Chat zusammenfassen (KI)">
+          {summarizing
+            ? <span className="text-sm animate-spin">⏳</span>
+            : <span className="text-sm">✨</span>}
+        </button>
         {/* Block/Report (only for direct chats) */}
         {conversation.type === "direct" && (() => {
           const other = conversation.members?.find((m: any) => m.user_id !== currentUserId);
@@ -794,13 +932,30 @@ export default function ChatView({
         })()}
       </div>
 
+      {/* KI Summary Panel */}
+      {summary && (
+        <div className="mx-3 my-2 rounded-2xl px-4 py-3 border"
+          style={{ background: "#07c16010", borderColor: "#07c16030" }}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold" style={{ color: "#07c160" }}>✨ KI-Zusammenfassung</span>
+            <button onClick={() => setSummary(null)} style={{ color: "var(--foreground-3)", fontSize: 12 }}>✕</button>
+          </div>
+          <p className="text-xs whitespace-pre-line" style={{ color: "var(--foreground)" }}>{summary}</p>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-2">
-        {messages.map((msg, idx) => (
+        {messages.map((msg, idx) => {
+          // Substitute decrypted content for E2E messages
+          const displayMsg = (msg as any).is_e2e
+            ? { ...msg, content: decryptedContents.get(msg.id) ?? "🔒 Entschlüssele…" }
+            : msg;
+          return (
           <div key={msg.id}>
             {shouldShowDate(messages, idx) && <DateDivider date={msg.created_at} />}
             <MessageBubble
-              msg={msg}
+              msg={displayMsg}
               isOwn={msg.sender_id === currentUserId}
               showAvatar={idx === 0 || messages[idx - 1].sender_id !== msg.sender_id}
               currentUserId={currentUserId}
@@ -808,7 +963,8 @@ export default function ChatView({
               onImageClick={setLightboxUrl}
             />
           </div>
-        ))}
+        );
+        })}
         {typingUsers.length > 0 && <TypingDots />}
         <div ref={bottomRef} className="h-2" />
       </div>
@@ -873,7 +1029,24 @@ export default function ChatView({
             />
           </div>
 
-          {/* Send / Voice */}
+          {/* Voice-to-text (speech recognition) */}
+          <button
+            onClick={toggleSpeechInput}
+            className="w-8 h-8 flex items-center justify-center mb-0.5 flex-none rounded-full"
+            style={{
+              color: isListening ? "white" : "var(--foreground-3)",
+              background: isListening ? "#ef4444" : "transparent",
+            }}
+            title={isListening ? "Aufnahme stoppen" : "Spracheingabe"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+            </svg>
+          </button>
+
+          {/* Send / Voice record */}
           {text.trim() ? (
             <button
               onClick={sendMessage}

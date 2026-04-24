@@ -222,6 +222,30 @@ export default function PrivacySettingsPage() {
           </div>
         </section>
 
+        {/* E2E Encryption */}
+        <section>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-2 px-1"
+            style={{ color: "var(--foreground-3)" }}>Verschlüsselung</p>
+          <button
+            onClick={() => router.push("/settings/e2e")}
+            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-left"
+            style={{ background: "var(--surface)" }}>
+            <span className="text-xl">🔒</span>
+            <div className="flex-1 min-w-0">
+              <span className="block text-sm font-medium" style={{ color: "var(--foreground)" }}>
+                Ende-zu-Ende-Verschlüsselung
+              </span>
+              <span className="block text-xs" style={{ color: "var(--foreground-3)" }}>
+                Schlüssel verwalten · ECDH-P256 + AES-GCM
+              </span>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ color: "var(--foreground-3)" }}>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+        </section>
+
         {/* Blocked users */}
         <section>
           <p className="text-xs font-semibold uppercase tracking-wider mb-2 px-1"

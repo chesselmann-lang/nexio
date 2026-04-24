@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import ConversationList from "@/components/chat/ConversationList";
 import type { ConversationWithMembers } from "@/types/database";
+import LookaroundButton from "@/components/LookaroundButton";
 
 export default async function ChatsPage() {
   const supabase = await createClient();
@@ -39,13 +40,8 @@ export default async function ChatsPage() {
         }}
       >
         <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>Chats</h1>
-        <div className="flex gap-2">
-          <button className="w-9 h-9 flex items-center justify-center rounded-full"
-            style={{ color: "var(--foreground-2)" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </button>
+        <div className="flex gap-2 items-center">
+          <LookaroundButton />
           {/* Neuer Chat → /chats/new */}
           <Link href="/chats/new"
             className="w-9 h-9 flex items-center justify-center rounded-full"
