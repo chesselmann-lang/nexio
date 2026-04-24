@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="#07c160"/>
+  <!-- N letterform — stylized -->
+  <text
+    x="256"
+    y="360"
+    font-family="system-ui, -apple-system, sans-serif"
+    font-size="320"
+    font-weight="800"
+    fill="white"
+    text-anchor="middle"
+    letter-spacing="-8"
+  >N</text>
+  <!-- Small dot / signal indicator -->
+  <circle cx="380" cy="148" r="32" fill="white" opacity="0.9"/>
+  <circle cx="380" cy="148" r="18" fill="#07c160"/>
+</svg>

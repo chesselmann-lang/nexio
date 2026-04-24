@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/* ============================================================
+   NEXIO — Design System
+   European WeChat Alternative
+   ============================================================ */
+
+:root {
+  /* Brand Colors */
+  --nexio-green: #07c160;
+  --nexio-green-dark: #06ad56;
+  --nexio-green-light: #e8f9f0;
+  --nexio-blue: #1677ff;
+  --nexio-blue-light: #e6f0ff;
+
+  /* Surfaces */
+  --background: #f5f5f5;
+  --surface: #ffffff;
+  --surface-2: #f0f0f0;
+  --border: #e5e5e5;
+
+  /* Text */
+  --foreground: #191919;
+  --foreground-2: #666666;
+  --foreground-3: #999999;
+
+  /* Chat */
+  --bubble-sent: var(--nexio-green);
+  --bubble-sent-text: #ffffff;
+  --bubble-received: #ffffff;
+  --bubble-received-text: #191919;
+
+  /* Nav */
+  --nav-height: 64px;
+  --header-height: 56px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-nexio-green: var(--nexio-green);
+  --color-nexio-blue: var(--nexio-blue);
+  --font-sans: var(--font-geist-sans);
+}
+
+.dark {
+  --background: #111111;
+  --surface: #1c1c1c;
+  --surface-2: #262626;
+  --border: #2a2a2a;
+  --foreground: #f0f0f0;
+  --foreground-2: #a0a0a0;
+  --foreground-3: #666666;
+  --bubble-received: #2a2a2a;
+  --bubble-received-text: #f0f0f0;
+  --nexio-green-light: #0d2b1a;
+}
+
+/* Base */
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overscroll-behavior: none;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* Chat message bubbles */
+.bubble-sent {
+  background: var(--bubble-sent);
+  color: var(--bubble-sent-text);
+  border-radius: 18px 4px 18px 18px;
+}
+.bubble-received {
+  background: var(--bubble-received);
+  color: var(--bubble-received-text);
+  border-radius: 4px 18px 18px 18px;
+}
+
+/* Safe area for iOS */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+/* Smooth transitions */
+.page-enter { animation: fadeIn 0.15s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Input focus */
+input:focus, textarea:focus {
+  outline: none;
+}
+
+/* Prevent text selection on UI elements */
+.no-select { user-select: none; -webkit-user-select: none; }
