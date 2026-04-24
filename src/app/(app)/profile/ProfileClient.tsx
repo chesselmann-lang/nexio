@@ -28,6 +28,7 @@ const MENU_SECTIONS = [
       { icon: "💰", label: "Preise & Pläne", href: "/pricing" },
       { icon: "🔗", label: "Verbundene Apps", href: "/settings/integrations" },
       { icon: "🛡️", label: "DSGVO & meine Daten", href: "/settings/gdpr" },
+      { icon: "📋", label: "Digital Services Act", href: "/dsa" },
     ],
   },
   {
@@ -67,7 +68,8 @@ export default function ProfileClient({ profile, userId }: { profile: User | nul
 
       <div className="flex-1 overflow-y-auto">
         {/* Profile Card */}
-        <div className="flex items-center gap-4 px-4 py-5 border-b"
+        <button onClick={() => router.push("/profile/edit")}
+          className="w-full flex items-center gap-4 px-4 py-5 border-b text-left"
           style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
           <div
             className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-bold flex-none"
@@ -96,7 +98,8 @@ export default function ProfileClient({ profile, userId }: { profile: User | nul
         </div>
 
         {/* Nexio ID / QR */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b"
+        <button onClick={() => router.push("/profile/qr")}
+          className="w-full flex items-center gap-3 px-4 py-3 border-b text-left"
           style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
           <span className="text-lg">📷</span>
           <div className="flex-1">
@@ -105,7 +108,11 @@ export default function ProfileClient({ profile, userId }: { profile: User | nul
               Kontakte hinzufügen per Scan
             </p>
           </div>
-        </div>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+            style={{ color: "var(--foreground-3)" }}>
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
 
         {/* Settings Sections */}
         {MENU_SECTIONS.map((section, si) => (

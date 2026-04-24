@@ -430,6 +430,147 @@ function MessageBubble({
   );
 }
 
+// ── Group Info + Admin Sheet ──────────────────────────────────────────────────
+function GroupInfoSheet({
+  conversation,
+  currentUserId,
+  name,
+  onClose,
+  onLeft,
+}: {
+  conversation: ConversationWithMembers;
+  currentUserId: string;
+  name: string;
+  onClose: () => void;
+  onLeft: () => void;
+}) {
+  const supabase = createClient();
+  const [groupName, setGroupName] = useState(name);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const myRole = (conversation.members ?? []).find((m: any) => m.user_id === currentUserId)?.role;
+  const isOwner = myRole === "owner";
+
+  async function renameGroup() {
+    if (!groupName.trim()) return;
+    setSaving(true);
+    await supabase.from("conversations").update({ name: groupName.trim() }).eq("id", conversation.id);
+    setSaving(false);
+    setEditing(false);
+  }
+
+  async function kickMember(userId: string) {
+    if (!isOwner || userId === currentUserId) return;
+    await supabase.from("conversation_members")
+      .delete()
+      .eq("conversation_id", conversation.id)
+      .eq("user_id", userId);
+    // Optimistically remove from local list (full refetch happens on next page load)
+    onClose();
+  }
+
+  async function leaveGroup() {
+    await supabase.from("conversation_members")
+      .delete()
+      .eq("conversation_id", conversation.id)
+      .eq("user_id", currentUserId);
+    onLeft();
+  }
+
+  return (
+    <div className="fixed inset-0 z-40" onClick={onClose}>
+      <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl pb-safe max-h-[80vh] overflow-hidden flex flex-col"
+        style={{ background: "var(--surface)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-2" style={{ background: "var(--border)" }} />
+
+        {/* Header */}
+        <div className="px-4 pb-3 border-b" style={{ borderColor: "var(--border)" }}>
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <input
+                autoFocus
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                className="flex-1 text-base font-bold bg-transparent focus:outline-none border-b"
+                style={{ color: "var(--foreground)", borderColor: "var(--nexio-green)" }}
+                onKeyDown={(e) => e.key === "Enter" && renameGroup()}
+              />
+              <button onClick={renameGroup} disabled={saving}
+                className="text-sm font-semibold px-3 py-1 rounded-full text-white"
+                style={{ background: "var(--nexio-green)" }}>
+                {saving ? "…" : "OK"}
+              </button>
+              <button onClick={() => { setEditing(false); setGroupName(name); }}
+                className="text-sm px-2" style={{ color: "var(--foreground-3)" }}>✕</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-base flex-1" style={{ color: "var(--foreground)" }}>{groupName}</h3>
+              {isOwner && (
+                <button onClick={() => setEditing(true)}
+                  className="text-xs font-medium px-2 py-0.5 rounded-full"
+                  style={{ background: "var(--background)", color: "var(--foreground-3)" }}>
+                  ✏️ Umbenennen
+                </button>
+              )}
+            </div>
+          )}
+          <p className="text-sm mt-0.5" style={{ color: "var(--foreground-3)" }}>
+            {conversation.members?.length ?? 0} Mitglieder · max. 500
+            {isOwner && <span className="ml-2 text-xs font-semibold" style={{ color: "var(--nexio-green)" }}>👑 Du bist Admin</span>}
+          </p>
+        </div>
+
+        {/* Member list */}
+        <div className="overflow-y-auto flex-1">
+          {(conversation.members ?? []).map((m: any) => {
+            const u: User = m.user as User;
+            if (!u) return null;
+            const isSelf = m.user_id === currentUserId;
+            return (
+              <div key={m.user_id} className="flex items-center gap-3 px-4 py-3 border-b"
+                style={{ borderColor: "var(--border)" }}>
+                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold flex-none"
+                  style={{ background: "#07c160" }}>
+                  {u.avatar_url
+                    ? <img src={u.avatar_url} alt="" className="w-full h-full object-cover" />
+                    : (u.display_name?.slice(0, 1) ?? "?")}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
+                    {u.display_name} {isSelf && <span style={{ color: "var(--foreground-3)" }}>(Du)</span>}
+                  </p>
+                  <p className="text-xs truncate" style={{ color: "var(--foreground-3)" }}>
+                    @{u.username} {m.role === "owner" ? "· 👑 Admin" : ""}
+                  </p>
+                </div>
+                {isOwner && !isSelf && (
+                  <button onClick={() => kickMember(m.user_id)}
+                    className="text-xs px-2 py-1 rounded-full text-red-500"
+                    style={{ background: "rgba(239,68,68,0.1)" }}>
+                    Entfernen
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Leave button */}
+        <div className="px-4 py-3 border-t" style={{ borderColor: "var(--border)" }}>
+          <button onClick={leaveGroup}
+            className="w-full py-3 rounded-2xl text-sm font-semibold text-red-500"
+            style={{ background: "rgba(239,68,68,0.08)" }}>
+            Gruppe verlassen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ChatView ─────────────────────────────────────────────────────────────
 export default function ChatView({
   conversation,
@@ -1107,56 +1248,13 @@ export default function ChatView({
 
       {/* Group Info Sheet */}
       {showGroupInfo && conversation.type === "group" && (
-        <div className="fixed inset-0 z-40" onClick={() => setShowGroupInfo(false)}>
-          <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl pb-safe max-h-[70vh] overflow-hidden flex flex-col"
-            style={{ background: "var(--surface)" }}
-            onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-2" style={{ background: "var(--border)" }} />
-            <div className="px-4 pb-2 border-b" style={{ borderColor: "var(--border)" }}>
-              <h3 className="font-bold text-base" style={{ color: "var(--foreground)" }}>{name}</h3>
-              <p className="text-sm" style={{ color: "var(--foreground-3)" }}>
-                {conversation.members?.length ?? 0} Mitglieder · max. 500
-              </p>
-            </div>
-            <div className="overflow-y-auto flex-1">
-              {(conversation.members ?? []).map((m: any) => {
-                const u: User = m.user as User;
-                if (!u) return null;
-                return (
-                  <div key={m.user_id} className="flex items-center gap-3 px-4 py-3 border-b"
-                    style={{ borderColor: "var(--border)" }}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-none"
-                      style={{ background: "#07c160" }}>
-                      {u.display_name?.slice(0, 1) ?? "?"}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
-                        {u.display_name}
-                      </p>
-                      <p className="text-xs truncate" style={{ color: "var(--foreground-3)" }}>
-                        @{u.username} {m.role === "owner" ? "· 👑 Admin" : ""}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="px-4 py-3">
-              <button
-                onClick={async () => {
-                  const supabase = createClient();
-                  await supabase.from("conversation_members")
-                    .delete().eq("conversation_id", conversation.id).eq("user_id", currentUserId);
-                  router.replace("/chats");
-                }}
-                className="w-full py-3 rounded-2xl text-sm font-semibold text-red-500"
-                style={{ background: "var(--surface-2)" }}
-              >
-                Gruppe verlassen
-              </button>
-            </div>
-          </div>
-        </div>
+        <GroupInfoSheet
+          conversation={conversation}
+          currentUserId={currentUserId}
+          name={name}
+          onClose={() => setShowGroupInfo(false)}
+          onLeft={() => router.replace("/chats")}
+        />
       )}
 
       {/* Upload Progress Bar */}
