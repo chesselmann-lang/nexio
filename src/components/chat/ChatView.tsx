@@ -247,6 +247,7 @@ function MessageBubble({
   currentUserId,
   onReact,
   onImageClick,
+  onLongPress,
 }: {
   msg: MessageWithSender;
   isOwn: boolean;
@@ -254,10 +255,21 @@ function MessageBubble({
   currentUserId: string;
   onReact: (msgId: string, emoji: string) => void;
   onImageClick: (url: string) => void;
+  onLongPress: (msg: MessageWithSender, y: number) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
   const [imgDescription, setImgDescription] = useState<string | null>(null);
   const [descLoading, setDescLoading] = useState(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleTouchStart(e: React.TouchEvent) {
+    const touch = e.touches[0];
+    const y = touch.clientY;
+    longPressTimer.current = setTimeout(() => onLongPress(msg, y), 500);
+  }
+  function handleTouchEnd() {
+    if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+  }
 
   async function describeImage() {
     if (!msg.media_url) return;
@@ -294,6 +306,10 @@ function MessageBubble({
           <div
             className={`${isOwn ? "bubble-sent" : "bubble-received"} px-3 py-2 shadow-sm`}
             onDoubleClick={() => setShowPicker((v) => !v)}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchEnd}
+            onContextMenu={(e) => { e.preventDefault(); onLongPress(msg, e.clientY); }}
           >
             {/* System message */}
             {msg.type === "system" && (
@@ -426,6 +442,120 @@ function MessageBubble({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Message Context Menu ──────────────────────────────────────────────────────
+function MsgContextMenu({
+  msg,
+  isOwn,
+  posY,
+  onClose,
+  onPin,
+  onForward,
+  onCopy,
+  onDelete,
+}: {
+  msg: MessageWithSender;
+  isOwn: boolean;
+  posY: number;
+  onClose: () => void;
+  onPin: () => void;
+  onForward: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+}) {
+  const items = [
+    { label: "Kopieren", icon: "📋", action: onCopy, danger: false },
+    { label: "Weiterleiten", icon: "↪️", action: onForward, danger: false },
+    { label: "Anpinnen", icon: "📌", action: onPin, danger: false },
+    ...(isOwn ? [{ label: "Löschen", icon: "🗑️", action: onDelete, danger: true }] : []),
+  ];
+  const showAbove = typeof window !== "undefined" && posY > window.innerHeight * 0.55;
+
+  return (
+    <div className="fixed inset-0 z-50" onClick={onClose}
+      style={{ background: "rgba(0,0,0,0.25)" }}>
+      <div
+        className="absolute left-1/2 -translate-x-1/2 rounded-2xl shadow-2xl overflow-hidden w-52"
+        style={{
+          background: "var(--surface)",
+          ...(showAbove
+            ? { bottom: typeof window !== "undefined" ? window.innerHeight - posY + 8 : "40%" }
+            : { top: posY + 8 }),
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {items.map((item, i) => (
+          <button key={item.label}
+            onClick={() => { item.action(); onClose(); }}
+            className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-left"
+            style={{
+              borderBottom: i < items.length - 1 ? "1px solid var(--border)" : "none",
+              color: item.danger ? "#ef4444" : "var(--foreground)",
+              background: "var(--surface)",
+            }}>
+            <span>{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Forward Sheet ─────────────────────────────────────────────────────────────
+function ForwardSheet({
+  conversations,
+  currentUserId,
+  onForward,
+  onClose,
+}: {
+  conversations: any[];
+  currentUserId: string;
+  onForward: (convId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50" onClick={onClose}>
+      <div
+        className="absolute bottom-0 left-0 right-0 rounded-t-3xl pb-safe max-h-[70vh] flex flex-col"
+        style={{ background: "var(--surface)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-2" style={{ background: "var(--border)" }} />
+        <p className="px-4 pb-3 text-base font-semibold" style={{ color: "var(--foreground)" }}>
+          Weiterleiten an…
+        </p>
+        <div className="overflow-y-auto flex-1">
+          {conversations.length === 0 && (
+            <p className="px-4 py-8 text-sm text-center" style={{ color: "var(--foreground-3)" }}>
+              Keine Chats gefunden
+            </p>
+          )}
+          {conversations.map((conv: any) => {
+            const otherMember = conv.type === "direct"
+              ? (conv.members ?? []).find((m: any) => m.user_id !== currentUserId)?.user
+              : null;
+            const displayName = conv.name ?? (otherMember as any)?.display_name ?? "Chat";
+            return (
+              <button key={conv.id}
+                onClick={() => { onForward(conv.id); onClose(); }}
+                className="w-full flex items-center gap-3 px-4 py-3.5 border-b text-left"
+                style={{ borderColor: "var(--border)" }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold flex-none"
+                  style={{ background: "var(--nexio-green)" }}>
+                  {conv.type === "group" ? "👥" : ((displayName as string)?.[0]?.toUpperCase() ?? "?")}
+                </div>
+                <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>
+                  {displayName}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -599,6 +729,10 @@ export default function ChatView({
   const [summary, setSummary] = useState<string | null>(null);
   const [summarizing, setSummarizing] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [pinnedMsg, setPinnedMsg] = useState<MessageWithSender | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ msg: MessageWithSender; y: number } | null>(null);
+  const [forwardingMsg, setForwardingMsg] = useState<MessageWithSender | null>(null);
+  const [forwardConvs, setForwardConvs] = useState<any[]>([]);
   const speechRef = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -694,6 +828,62 @@ export default function ChatView({
       });
     });
   }, [e2e.ready, messages]);
+
+  // ── Load pinned message ───────────────────────────────────────────────────
+  useEffect(() => {
+    supabase
+      .from("pinned_messages")
+      .select("message_id")
+      .eq("conversation_id", conversation.id)
+      .order("pinned_at", { ascending: false })
+      .limit(1)
+      .single()
+      .then(async ({ data }) => {
+        if (!data?.message_id) return;
+        const { data: msg } = await supabase.from("messages").select("*").eq("id", data.message_id).single();
+        if (msg) setPinnedMsg(msg as MessageWithSender);
+      });
+  }, [conversation.id]);
+
+  // ── Pin / Forward / Delete ────────────────────────────────────────────────
+  async function handlePinMessage(msg: MessageWithSender) {
+    await supabase.from("pinned_messages").upsert({
+      conversation_id: conversation.id,
+      message_id: msg.id,
+      pinned_by: currentUserId,
+    }, { onConflict: "conversation_id,message_id" });
+    setPinnedMsg(msg);
+  }
+
+  async function handleDeleteMessage(msg: MessageWithSender) {
+    if (msg.sender_id !== currentUserId) return;
+    await supabase.from("messages").update({ is_deleted: true, content: null }).eq("id", msg.id);
+    setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, is_deleted: true, content: "Diese Nachricht wurde gelöscht." } : m));
+  }
+
+  async function handleForwardMessage(msg: MessageWithSender) {
+    setForwardingMsg(msg);
+    const { data } = await supabase
+      .from("conversation_members")
+      .select("conversation:conversations(id, name, type, members:conversation_members(user_id, user:users(display_name, avatar_url)))")
+      .eq("user_id", currentUserId)
+      .limit(30);
+    setForwardConvs((data ?? []).map((d: any) => d.conversation).filter(Boolean).filter((c: any) => c.id !== conversation.id));
+  }
+
+  async function sendForward(targetConvId: string) {
+    if (!forwardingMsg) return;
+    await supabase.from("messages").insert({
+      conversation_id: targetConvId,
+      sender_id: currentUserId,
+      type: forwardingMsg.type,
+      content: forwardingMsg.content,
+      media_url: forwardingMsg.media_url,
+      media_metadata: forwardingMsg.media_metadata,
+      forwarded_from: forwardingMsg.id,
+    });
+    setForwardingMsg(null);
+  }
 
   // ── React to message ──────────────────────────────────────────────────────
   async function handleReact(msgId: string, emoji: string) {
@@ -1073,6 +1263,22 @@ export default function ChatView({
         })()}
       </div>
 
+      {/* Pinned Message Banner */}
+      {pinnedMsg && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b"
+          style={{ background: "#07c16010", borderColor: "#07c16030" }}>
+          <span className="text-sm flex-none">📌</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-semibold" style={{ color: "#07c160" }}>Angepinnte Nachricht</p>
+            <p className="text-xs truncate" style={{ color: "var(--foreground-2)" }}>
+              {pinnedMsg.content ?? (pinnedMsg.type === "image" ? "📷 Bild" : pinnedMsg.type === "audio" ? "🎙 Sprachnachricht" : "Medieninhalt")}
+            </p>
+          </div>
+          <button onClick={() => setPinnedMsg(null)}
+            className="text-xs flex-none" style={{ color: "var(--foreground-3)" }}>✕</button>
+        </div>
+      )}
+
       {/* KI Summary Panel */}
       {summary && (
         <div className="mx-3 my-2 rounded-2xl px-4 py-3 border"
@@ -1102,6 +1308,7 @@ export default function ChatView({
               currentUserId={currentUserId}
               onReact={handleReact}
               onImageClick={setLightboxUrl}
+              onLongPress={(m, y) => setContextMenu({ msg: m, y })}
             />
           </div>
         );
@@ -1264,6 +1471,30 @@ export default function ChatView({
           <p className="text-xs mb-1" style={{ color: "var(--foreground-2)" }}>Hochladen…</p>
           <UploadProgress progress={uploadProgress} />
         </div>
+      )}
+
+      {/* Message Context Menu */}
+      {contextMenu && (
+        <MsgContextMenu
+          msg={contextMenu.msg}
+          isOwn={contextMenu.msg.sender_id === currentUserId}
+          posY={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onCopy={() => { navigator.clipboard.writeText(contextMenu.msg.content ?? ""); }}
+          onPin={() => handlePinMessage(contextMenu.msg)}
+          onForward={() => handleForwardMessage(contextMenu.msg)}
+          onDelete={() => handleDeleteMessage(contextMenu.msg)}
+        />
+      )}
+
+      {/* Forward Sheet */}
+      {forwardingMsg && (
+        <ForwardSheet
+          conversations={forwardConvs}
+          currentUserId={currentUserId}
+          onForward={sendForward}
+          onClose={() => setForwardingMsg(null)}
+        />
       )}
     </div>
   );

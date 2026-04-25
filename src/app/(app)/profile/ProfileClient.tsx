@@ -58,10 +58,10 @@ export default function ProfileClient({ profile, userId }: { profile: User | nul
       <div className="flex-none px-4 flex items-center border-b"
         style={{ height: "var(--header-height)", background: "var(--surface)", borderColor: "var(--border)" }}>
         <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>Ich</h1>
-        <button className="ml-auto" style={{ color: "var(--foreground-2)" }}>
+        <button onClick={() => router.push("/notifications")} className="ml-auto" style={{ color: "var(--foreground-2)" }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
         </button>
       </div>
@@ -90,12 +90,12 @@ export default function ProfileClient({ profile, userId }: { profile: User | nul
               {profile?.bio || "Kein Status gesetzt"}
             </p>
           </div>
-          <button style={{ color: "var(--foreground-3)" }}>
+          <span style={{ color: "var(--foreground-3)" }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 18l6-6-6-6" />
             </svg>
-          </button>
-        </div>
+          </span>
+        </button>
 
         {/* Nexio ID / QR */}
         <button onClick={() => router.push("/profile/qr")}

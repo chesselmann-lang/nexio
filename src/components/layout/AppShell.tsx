@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import type { User } from "@/types/database";
 
 const NAV = [
@@ -77,10 +79,45 @@ export default function AppShell({
   profile: User | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
 
-  // Helper: check if path is active (exact or prefix match)
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
+
+  useEffect(() => {
+    // Load initial unread count
+    supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("is_read", false)
+      .then(({ count }) => setUnreadNotifs(count ?? 0));
+
+    // Realtime: new notifications
+    const channel = supabase
+      .channel("appshell-notifs")
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+      }, () => setUnreadNotifs((n) => n + 1))
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "notifications",
+      }, () => {
+        // Refetch count on any update
+        supabase
+          .from("notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("is_read", false)
+          .then(({ count }) => setUnreadNotifs(count ?? 0));
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   return (
     <div className="h-full flex flex-col" style={{ background: "var(--background)" }}>
@@ -99,23 +136,27 @@ export default function AppShell({
         <div className="flex h-full">
           {NAV.map(({ href, label, icon }) => {
             const active = isActive(href);
+            const isProfile = href === "/profile";
             return (
               <Link
                 key={href}
                 href={href}
-                className="flex-1 flex flex-col items-center justify-center gap-0.5 select-none"
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 select-none relative"
                 style={{
                   color: active ? "var(--nexio-green)" : "var(--foreground-3)",
                   transition: "color 0.15s",
                 }}
               >
-                <span className="w-6 h-6 flex items-center justify-center">
+                <span className="w-6 h-6 flex items-center justify-center relative">
                   {icon(active)}
+                  {isProfile && unreadNotifs > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold px-0.5"
+                      style={{ background: "#ef4444" }}>
+                      {unreadNotifs > 99 ? "99+" : unreadNotifs}
+                    </span>
+                  )}
                 </span>
-                <span
-                  className="text-[10px] font-medium"
-                  style={{ letterSpacing: "0.01em" }}
-                >
+                <span className="text-[10px] font-medium" style={{ letterSpacing: "0.01em" }}>
                   {label}
                 </span>
               </Link>
