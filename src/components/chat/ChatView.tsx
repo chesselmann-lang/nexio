@@ -963,6 +963,11 @@ export default function ChatView({
   const [readMsgIds, setReadMsgIds] = useState<Set<string>>(new Set());
   const [polls, setPolls] = useState<Map<string, PollData>>(new Map());
   const [showCreatePoll, setShowCreatePoll] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchIdx, setSearchIdx] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const msgItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const speechRef = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -1567,6 +1572,35 @@ export default function ChatView({
 
   const typingText = formatTypingText(typingUsers);
 
+  // ── In-chat search ────────────────────────────────────────────────────────────
+  const searchResults = searchQuery.trim().length >= 2
+    ? messages.filter(m =>
+        m.content?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : [];
+
+  function openSearch() {
+    setShowSearch(true);
+    setSearchQuery("");
+    setSearchIdx(0);
+    setTimeout(() => searchInputRef.current?.focus(), 60);
+  }
+
+  function closeSearch() {
+    setShowSearch(false);
+    setSearchQuery("");
+    setSearchIdx(0);
+  }
+
+  function scrollToSearchResult(idx: number) {
+    if (searchResults.length === 0) return;
+    const safeIdx = ((idx % searchResults.length) + searchResults.length) % searchResults.length;
+    setSearchIdx(safeIdx);
+    const msgId = searchResults[safeIdx].id;
+    const el = msgItemRefs.current.get(msgId);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   return (
     <div className="h-full flex flex-col" style={{ background: "var(--background)" }}>
       {/* Header */}
@@ -1607,6 +1641,17 @@ export default function ChatView({
               }
             </p>
           )}
+        </button>
+        {/* Search toggle */}
+        <button
+          onClick={openSearch}
+          className="w-8 h-8 flex items-center justify-center"
+          style={{ color: "var(--foreground-2)" }}
+          title="Suche"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
         </button>
         {/* Call buttons */}
         <button
@@ -1651,6 +1696,68 @@ export default function ChatView({
           ) : null;
         })()}
       </div>
+
+      {/* In-Chat Search Bar */}
+      {showSearch && (
+        <div className="flex-none flex items-center gap-2 px-3 py-2 border-b"
+          style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+          <div className="flex-1 flex items-center gap-2 rounded-xl px-3 py-1.5 border"
+            style={{ background: "var(--background)", borderColor: "var(--border)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ color: "var(--foreground-3)", flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setSearchIdx(0); }}
+              onKeyDown={e => {
+                if (e.key === "Enter") scrollToSearchResult(searchIdx + 1);
+                if (e.key === "Escape") closeSearch();
+              }}
+              placeholder="Nachrichten durchsuchen…"
+              className="flex-1 bg-transparent text-sm focus:outline-none"
+              style={{ color: "var(--foreground)" }}
+            />
+            {searchQuery && (
+              <button onClick={() => { setSearchQuery(""); setSearchIdx(0); }}
+                style={{ color: "var(--foreground-3)" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            )}
+          </div>
+          {searchResults.length > 0 && (
+            <>
+              <span className="text-xs whitespace-nowrap" style={{ color: "var(--foreground-3)" }}>
+                {searchIdx + 1}/{searchResults.length}
+              </span>
+              <button onClick={() => scrollToSearchResult(searchIdx - 1)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg"
+                style={{ color: "var(--foreground-2)" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="18 15 12 9 6 15"/>
+                </svg>
+              </button>
+              <button onClick={() => scrollToSearchResult(searchIdx + 1)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg"
+                style={{ color: "var(--foreground-2)" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+            </>
+          )}
+          {searchQuery.trim().length >= 2 && searchResults.length === 0 && (
+            <span className="text-xs" style={{ color: "var(--foreground-3)" }}>Keine Treffer</span>
+          )}
+          <button onClick={closeSearch} className="text-sm px-2 py-1 rounded-lg"
+            style={{ color: "var(--foreground-3)" }}>
+            Fertig
+          </button>
+        </div>
+      )}
 
       {/* Pinned Message Banner */}
       {pinnedMsg && (
@@ -1699,8 +1806,21 @@ export default function ChatView({
               };
             }
           }
+          const isSearchHit = searchQuery.trim().length >= 2 &&
+            msg.content?.toLowerCase().includes(searchQuery.toLowerCase());
+          const isActiveHit = isSearchHit &&
+            searchResults[searchIdx]?.id === msg.id;
+
           return (
-          <div key={msg.id}>
+          <div
+            key={msg.id}
+            ref={el => { if (el) msgItemRefs.current.set(msg.id, el); else msgItemRefs.current.delete(msg.id); }}
+            style={isActiveHit
+              ? { background: "rgba(7,193,96,0.12)", borderRadius: 12, transition: "background 0.3s" }
+              : isSearchHit
+                ? { background: "rgba(7,193,96,0.05)", borderRadius: 12 }
+                : undefined}
+          >
             {shouldShowDate(messages, idx) && <DateDivider date={msg.created_at} />}
             <div data-msg-id={!isOwn ? msg.id : undefined}>
               <MessageBubble

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { de } from "date-fns/locale";
@@ -41,6 +41,71 @@ const PRIVACY_LABELS: Record<string, string> = {
   public: "🌍 Öffentlich", friends: "👥 Freunde", close_friends: "⭐ Enge Freunde", private: "🔒 Nur ich"
 };
 
+interface Viewer {
+  viewer_id: string;
+  viewed_at: string;
+  viewer: { display_name: string; avatar_url: string | null; username: string } | null;
+}
+
+function ViewersModal({ storyId, onClose }: { storyId: string; onClose: () => void }) {
+  const supabase = createClient();
+  const [viewers, setViewers] = useState<Viewer[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from("story_views")
+      .select("viewer_id, viewed_at, viewer:users!viewer_id(display_name, avatar_url, username)")
+      .eq("story_id", storyId)
+      .order("viewed_at", { ascending: false })
+      .then(({ data }) => {
+        setViewers((data as unknown as Viewer[]) ?? []);
+        setLoading(false);
+      });
+  }, [storyId]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl overflow-hidden" style={{ background: "var(--surface)" }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+          <h3 className="text-base font-bold" style={{ color: "var(--foreground)" }}>
+            👁 Gesehen von {loading ? "…" : viewers.length}
+          </h3>
+          <button onClick={onClose} style={{ color: "var(--foreground-3)" }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div className="max-h-72 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <div className="w-6 h-6 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+            </div>
+          ) : viewers.length === 0 ? (
+            <p className="text-center py-8 text-sm" style={{ color: "var(--foreground-3)" }}>Noch keine Aufrufe</p>
+          ) : (
+            viewers.map(v => (
+              <div key={v.viewer_id} className="flex items-center gap-3 px-5 py-3 border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+                <Avatar name={v.viewer?.display_name ?? "?"} size={36} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: "var(--foreground)" }}>
+                    {v.viewer?.display_name ?? "Unbekannt"}
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
+                    @{v.viewer?.username ?? "—"} · {formatDistanceToNow(new Date(v.viewed_at), { locale: de, addSuffix: true })}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="h-safe pb-4" />
+      </div>
+    </div>
+  );
+}
+
 function StoryCard({ story, currentUserId, onReport }: {
   story: Story; currentUserId: string; onReport: (id: string) => void;
 }) {
@@ -52,8 +117,36 @@ function StoryCard({ story, currentUserId, onReport }: {
   const [commentCount, setCommentCount] = useState(story.comments_count ?? 0);
   const [loadingComments, setLoadingComments] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
+  const [showViewers, setShowViewers] = useState(false);
+  const [viewCount, setViewCount] = useState<number>(story.views?.length ?? 0);
   const hasLiked = likes.includes(currentUserId);
   const isOwn = story.author_id === currentUserId;
+
+  // Track view + load accurate count from story_views table
+  useEffect(() => {
+    if (isOwn) {
+      // Fetch viewer count for own stories
+      supabase
+        .from("story_views")
+        .select("viewer_id", { count: "exact", head: true })
+        .eq("story_id", story.id)
+        .then(({ count }) => { if (count != null) setViewCount(count); });
+    } else {
+      // Record this view
+      supabase
+        .from("story_views")
+        .upsert({ story_id: story.id, viewer_id: currentUserId }, { onConflict: "story_id,viewer_id" })
+        .then(() => {
+          // Update the legacy views array on stories too (best-effort)
+          const alreadySeen = story.views?.includes(currentUserId);
+          if (!alreadySeen) {
+            const next = [...(story.views ?? []), currentUserId];
+            supabase.from("stories").update({ views: next }).eq("id", story.id);
+          }
+        });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id]);
 
   async function toggleLike() {
     const next = hasLiked ? likes.filter(u => u !== currentUserId) : [...likes, currentUserId];
@@ -188,13 +281,31 @@ function StoryCard({ story, currentUserId, onReport }: {
           </svg>
           {commentCount > 0 ? commentCount : "Kommentieren"}
         </button>
-        <div className="ml-auto flex items-center gap-1 text-xs" style={{ color: "var(--foreground-3)" }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-          </svg>
-          {story.views?.length ?? 0}
-        </div>
+        {isOwn ? (
+          <button
+            className="ml-auto flex items-center gap-1 text-xs"
+            style={{ color: "var(--foreground-3)" }}
+            onClick={() => setShowViewers(true)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+            {viewCount}
+          </button>
+        ) : (
+          <div className="ml-auto flex items-center gap-1 text-xs" style={{ color: "var(--foreground-3)" }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+            {viewCount}
+          </div>
+        )}
       </div>
+
+      {/* Viewers modal for own stories */}
+      {showViewers && (
+        <ViewersModal storyId={story.id} onClose={() => setShowViewers(false)} />
+      )}
 
       {/* Comments section */}
       {showComments && (

@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@/types/database";
+import IncomingCallBanner from "@/components/calls/IncomingCallBanner";
 
 const NAV = [
   {
@@ -121,6 +122,14 @@ export default function AppShell({
 
   return (
     <div className="h-full flex flex-col" style={{ background: "var(--background)" }}>
+      {/* Incoming call overlay — global */}
+      {profile?.id && (
+        <IncomingCallBanner
+          currentUserId={profile.id}
+          displayName={profile.display_name ?? "Ich"}
+        />
+      )}
+
       {/* Main content */}
       <main className="flex-1 overflow-hidden relative">{children}</main>
 
