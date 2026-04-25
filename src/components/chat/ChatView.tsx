@@ -19,12 +19,14 @@ function MediaPickerSheet({
   onVideo,
   onFile,
   onLocation,
+  onPoll,
 }: {
   onClose: () => void;
   onImage: () => void;
   onVideo: () => void;
   onFile: () => void;
   onLocation: () => void;
+  onPoll: () => void;
 }) {
   return (
     <div className="fixed inset-0 z-40" onClick={onClose}>
@@ -41,6 +43,7 @@ function MediaPickerSheet({
             { icon: "🎥", label: "Video", action: onVideo, bg: "#9333ea20", color: "#9333ea" },
             { icon: "📄", label: "Dokument", action: onFile, bg: "#f59e0b20", color: "#f59e0b" },
             { icon: "📍", label: "Standort", action: onLocation, bg: "#07c16020", color: "#07c160" },
+            { icon: "📊", label: "Umfrage", action: onPoll, bg: "#ef444420", color: "#ef4444" },
           ].map((item) => (
             <button
               key={item.label}
@@ -248,6 +251,8 @@ function MessageBubble({
   onReact,
   onImageClick,
   onLongPress,
+  quotedMsg,
+  isRead,
 }: {
   msg: MessageWithSender;
   isOwn: boolean;
@@ -256,6 +261,10 @@ function MessageBubble({
   onReact: (msgId: string, emoji: string) => void;
   onImageClick: (url: string) => void;
   onLongPress: (msg: MessageWithSender, y: number) => void;
+  quotedMsg?: { content: string | null; senderName?: string } | null;
+  isRead?: boolean;
+  poll?: PollData | null;
+  onVote?: (pollId: string, optionIdx: number) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
   const [imgDescription, setImgDescription] = useState<string | null>(null);
@@ -311,6 +320,9 @@ function MessageBubble({
             onTouchMove={handleTouchEnd}
             onContextMenu={(e) => { e.preventDefault(); onLongPress(msg, e.clientY); }}
           >
+            {/* Quoted reply */}
+            {quotedMsg && <QuotedMsg content={quotedMsg.content} senderName={quotedMsg.senderName} />}
+
             {/* System message */}
             {msg.type === "system" && (
               <p className="text-xs text-center opacity-60">{msg.content}</p>
@@ -379,6 +391,11 @@ function MessageBubble({
               </div>
             )}
 
+            {/* Poll */}
+            {msg.type === "poll" && poll && onVote && (
+              <PollMessage poll={poll} currentUserId={currentUserId} onVote={onVote} />
+            )}
+
             {/* File */}
             {msg.type === "file" && (
               <a
@@ -397,6 +414,9 @@ function MessageBubble({
 
             {/* Timestamp + read receipt */}
             <div className={`flex items-center gap-1 mt-1 ${isOwn ? "justify-end" : "justify-start"}`}>
+              {msg.edited_at && (
+                <span className="text-[9px] opacity-40 italic">bearbeitet</span>
+              )}
               <span className="text-[10px] opacity-50">
                 {format(new Date(msg.created_at), "HH:mm")}
               </span>
@@ -406,9 +426,8 @@ function MessageBubble({
                   height="8"
                   viewBox="0 0 18 10"
                   fill="none"
-                  className="opacity-60"
+                  style={{ color: isRead ? "#07c160" : "currentColor", opacity: isRead ? 1 : 0.6 }}
                 >
-                  {/* Double check mark */}
                   <path d="M1 5l4 4 8-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                   <path d="M6 5l4 4 8-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -446,6 +465,43 @@ function MessageBubble({
   );
 }
 
+// ── Reply Preview Bar ─────────────────────────────────────────────────────────
+function ReplyPreviewBar({ msg, onCancel }: { msg: MessageWithSender; onCancel: () => void }) {
+  const preview = msg.content
+    ? msg.content.slice(0, 60) + (msg.content.length > 60 ? "…" : "")
+    : msg.type === "image" ? "📷 Bild"
+    : msg.type === "audio" ? "🎙 Sprachnachricht"
+    : msg.type === "video" ? "🎥 Video"
+    : "Medieninhalt";
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 border-t"
+      style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}>
+      <div className="w-1 self-stretch rounded-full flex-none" style={{ background: "var(--nexio-green)" }} />
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] font-semibold" style={{ color: "var(--nexio-green)" }}>
+          {msg.sender?.display_name ?? "Nachricht"}
+        </p>
+        <p className="text-xs truncate" style={{ color: "var(--foreground-3)" }}>{preview}</p>
+      </div>
+      <button onClick={onCancel} className="flex-none text-lg leading-none" style={{ color: "var(--foreground-3)" }}>✕</button>
+    </div>
+  );
+}
+
+// ── Quoted Message Snippet ────────────────────────────────────────────────────
+function QuotedMsg({ content, senderName }: { content: string | null; senderName?: string }) {
+  return (
+    <div className="flex gap-1.5 mb-1.5 rounded-xl overflow-hidden"
+      style={{ background: "rgba(0,0,0,0.08)" }}>
+      <div className="w-0.5 flex-none" style={{ background: "var(--nexio-green)" }} />
+      <div className="flex-1 min-w-0 py-1.5 pr-2">
+        {senderName && <p className="text-[10px] font-semibold" style={{ color: "var(--nexio-green)" }}>{senderName}</p>}
+        <p className="text-xs truncate opacity-70">{content ?? "🖼 Medieninhalt"}</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Message Context Menu ──────────────────────────────────────────────────────
 function MsgContextMenu({
   msg,
@@ -456,6 +512,8 @@ function MsgContextMenu({
   onForward,
   onCopy,
   onDelete,
+  onReply,
+  onEdit,
 }: {
   msg: MessageWithSender;
   isOwn: boolean;
@@ -465,11 +523,15 @@ function MsgContextMenu({
   onForward: () => void;
   onCopy: () => void;
   onDelete: () => void;
+  onReply: () => void;
+  onEdit: () => void;
 }) {
   const items = [
+    { label: "Antworten", icon: "↩️", action: onReply, danger: false },
     { label: "Kopieren", icon: "📋", action: onCopy, danger: false },
     { label: "Weiterleiten", icon: "↪️", action: onForward, danger: false },
     { label: "Anpinnen", icon: "📌", action: onPin, danger: false },
+    ...(isOwn && msg.type === "text" ? [{ label: "Bearbeiten", icon: "✏️", action: onEdit, danger: false }] : []),
     ...(isOwn ? [{ label: "Löschen", icon: "🗑️", action: onDelete, danger: true }] : []),
   ];
   const showAbove = typeof window !== "undefined" && posY > window.innerHeight * 0.55;
@@ -578,6 +640,24 @@ function GroupInfoSheet({
   const [groupName, setGroupName] = useState(name);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copySuccess, setCopySuccess] = useState(false);
+
+  async function generateInviteLink() {
+    const res = await fetch(`/api/conversations/${conversation.id}/invite`, { method: "POST" });
+    const data = await res.json();
+    if (data.token) {
+      const link = `${window.location.origin}/join/${data.token}`;
+      setInviteLink(link);
+    }
+  }
+
+  async function copyInviteLink() {
+    if (!inviteLink) return;
+    await navigator.clipboard.writeText(inviteLink);
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+  }
 
   const myRole = (conversation.members ?? []).find((m: any) => m.user_id === currentUserId)?.role;
   const isOwner = myRole === "owner";
@@ -688,12 +768,156 @@ function GroupInfoSheet({
           })}
         </div>
 
+        {/* Invite Link */}
+        <div className="px-4 py-3 border-t space-y-2" style={{ borderColor: "var(--border)" }}>
+          {!inviteLink ? (
+            <button onClick={generateInviteLink}
+              className="w-full py-3 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2"
+              style={{ background: "var(--surface-2)", color: "var(--nexio-green)" }}>
+              🔗 Einladungslink erstellen
+            </button>
+          ) : (
+            <div className="rounded-2xl overflow-hidden border" style={{ borderColor: "var(--border)" }}>
+              <div className="px-3 py-2" style={{ background: "var(--surface-2)" }}>
+                <p className="text-[10px] font-semibold mb-0.5" style={{ color: "var(--nexio-green)" }}>Einladungslink</p>
+                <p className="text-xs truncate" style={{ color: "var(--foreground-3)" }}>{inviteLink}</p>
+              </div>
+              <button onClick={copyInviteLink}
+                className="w-full py-2.5 text-sm font-semibold border-t"
+                style={{ borderColor: "var(--border)", color: copySuccess ? "#07c160" : "var(--foreground)" }}>
+                {copySuccess ? "✓ Kopiert!" : "📋 Kopieren"}
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Leave button */}
         <div className="px-4 py-3 border-t" style={{ borderColor: "var(--border)" }}>
           <button onClick={leaveGroup}
             className="w-full py-3 rounded-2xl text-sm font-semibold text-red-500"
             style={{ background: "rgba(239,68,68,0.08)" }}>
             Gruppe verlassen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Poll Message Component ────────────────────────────────────────────────────
+interface PollOption { text: string; votes: string[] }
+interface PollData {
+  id: string;
+  question: string;
+  options: PollOption[];
+  is_multiple_choice: boolean;
+  created_by: string;
+}
+
+function PollMessage({ poll, currentUserId, onVote }: {
+  poll: PollData;
+  currentUserId: string;
+  onVote: (pollId: string, optionIdx: number) => void;
+}) {
+  const totalVotes = poll.options.reduce((s, o) => s + o.votes.length, 0);
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm font-semibold leading-snug">{poll.question}</p>
+      {poll.options.map((opt, idx) => {
+        const voted = opt.votes.includes(currentUserId);
+        const pct = totalVotes > 0 ? Math.round((opt.votes.length / totalVotes) * 100) : 0;
+        return (
+          <button key={idx} onClick={() => onVote(poll.id, idx)}
+            className="w-full text-left rounded-xl overflow-hidden border transition-all"
+            style={{
+              borderColor: voted ? "var(--nexio-green)" : "rgba(255,255,255,0.2)",
+              background: "rgba(0,0,0,0.08)",
+            }}>
+            <div className="relative px-3 py-2">
+              <div className="absolute inset-0 rounded-xl transition-all"
+                style={{ width: `${pct}%`, background: voted ? "#07c16030" : "rgba(255,255,255,0.08)" }} />
+              <div className="relative flex items-center justify-between gap-2">
+                <span className="text-xs font-medium">{opt.text}</span>
+                <span className="text-[10px] opacity-60">{pct}%</span>
+              </div>
+            </div>
+          </button>
+        );
+      })}
+      <p className="text-[10px] opacity-50">{totalVotes} Stimme{totalVotes !== 1 ? "n" : ""} · {poll.is_multiple_choice ? "Mehrfachauswahl" : "Einzelauswahl"}</p>
+    </div>
+  );
+}
+
+// ── Create Poll Sheet ──────────────────────────────────────────────────────────
+function CreatePollSheet({ onClose, onSubmit }: {
+  onClose: () => void;
+  onSubmit: (question: string, options: string[], isMultiple: boolean) => void;
+}) {
+  const [question, setQuestion] = useState("");
+  const [options, setOptions] = useState(["", ""]);
+  const [isMultiple, setIsMultiple] = useState(false);
+
+  function addOption() { if (options.length < 10) setOptions([...options, ""]); }
+  function removeOption(i: number) { if (options.length > 2) setOptions(options.filter((_, idx) => idx !== i)); }
+  function updateOption(i: number, v: string) { setOptions(options.map((o, idx) => idx === i ? v : o)); }
+
+  function submit() {
+    const validOpts = options.map((o) => o.trim()).filter(Boolean);
+    if (!question.trim() || validOpts.length < 2) return;
+    onSubmit(question.trim(), validOpts, isMultiple);
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50" onClick={onClose}>
+      <div className="absolute bottom-0 left-0 right-0 rounded-t-3xl pb-safe max-h-[80vh] overflow-y-auto"
+        style={{ background: "var(--surface)" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-4" style={{ background: "var(--border)" }} />
+        <div className="px-4 pb-4 space-y-4">
+          <h3 className="text-base font-bold" style={{ color: "var(--foreground)" }}>📊 Umfrage erstellen</h3>
+          <input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Frage eingeben…"
+            className="w-full rounded-2xl px-4 py-3 text-sm border focus:outline-none"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+          />
+          <div className="space-y-2">
+            {options.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={opt}
+                  onChange={(e) => updateOption(i, e.target.value)}
+                  placeholder={`Option ${i + 1}`}
+                  className="flex-1 rounded-2xl px-4 py-2.5 text-sm border focus:outline-none"
+                  style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                />
+                {options.length > 2 && (
+                  <button onClick={() => removeOption(i)} className="text-red-500 text-lg">✕</button>
+                )}
+              </div>
+            ))}
+            {options.length < 10 && (
+              <button onClick={addOption} className="text-sm font-medium"
+                style={{ color: "var(--nexio-green)" }}>+ Option hinzufügen</button>
+            )}
+          </div>
+          <label className="flex items-center gap-3">
+            <div
+              onClick={() => setIsMultiple((v) => !v)}
+              className="w-10 h-6 rounded-full flex items-center transition-all cursor-pointer relative"
+              style={{ background: isMultiple ? "var(--nexio-green)" : "var(--border)" }}>
+              <div className="w-5 h-5 rounded-full bg-white shadow-sm absolute transition-all"
+                style={{ left: isMultiple ? 20 : 2 }} />
+            </div>
+            <span className="text-sm" style={{ color: "var(--foreground)" }}>Mehrfachauswahl erlauben</span>
+          </label>
+          <button onClick={submit}
+            className="w-full py-3.5 rounded-2xl text-sm font-bold text-white"
+            style={{ background: "var(--nexio-green)" }}>
+            Umfrage senden
           </button>
         </div>
       </div>
@@ -733,6 +957,12 @@ export default function ChatView({
   const [contextMenu, setContextMenu] = useState<{ msg: MessageWithSender; y: number } | null>(null);
   const [forwardingMsg, setForwardingMsg] = useState<MessageWithSender | null>(null);
   const [forwardConvs, setForwardConvs] = useState<any[]>([]);
+  const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
+  const [editingMsg, setEditingMsg] = useState<MessageWithSender | null>(null);
+  const [editText, setEditText] = useState("");
+  const [readMsgIds, setReadMsgIds] = useState<Set<string>>(new Set());
+  const [polls, setPolls] = useState<Map<string, PollData>>(new Map());
+  const [showCreatePoll, setShowCreatePoll] = useState(false);
   const speechRef = useRef<any>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -885,6 +1115,154 @@ export default function ChatView({
     setForwardingMsg(null);
   }
 
+  // ── Read receipts via IntersectionObserver ────────────────────────────────
+  const msgListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const container = msgListRef.current;
+    if (!container) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const msgId = (entry.target as HTMLElement).dataset.msgId;
+        if (!msgId) return;
+        // Mark as read in DB (ignore duplicates via ON CONFLICT DO NOTHING)
+        supabase.from("message_reads").upsert(
+          { message_id: msgId, user_id: currentUserId },
+          { onConflict: "message_id,user_id", ignoreDuplicates: true }
+        ).then(() => {});
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.5 });
+    // Observe all incoming (non-own) message bubbles
+    container.querySelectorAll("[data-msg-id]").forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [messages.length]);
+
+  // Subscribe to message_reads to update blue ticks on own messages
+  useEffect(() => {
+    const channel = supabase
+      .channel(`reads:${conversation.id}`)
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "message_reads",
+      }, (payload) => {
+        if (payload.new.user_id !== currentUserId) {
+          setReadMsgIds((prev) => new Set([...prev, payload.new.message_id]));
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [conversation.id, currentUserId]);
+
+  // ── Polls: load + realtime subscription ──────────────────────────────────
+  useEffect(() => {
+    supabase
+      .from("polls")
+      .select("*")
+      .eq("conversation_id", conversation.id)
+      .then(({ data }) => {
+        if (!data) return;
+        const map = new Map<string, PollData>();
+        data.forEach((p) => map.set(p.message_id, p as PollData));
+        setPolls(map);
+      });
+    const ch = supabase
+      .channel(`polls:${conversation.id}`)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "polls",
+        filter: `conversation_id=eq.${conversation.id}`,
+      }, (payload) => {
+        setPolls((prev) => {
+          const next = new Map(prev);
+          next.set(payload.new.message_id, payload.new as PollData);
+          return next;
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [conversation.id]);
+
+  async function handleVote(pollId: string, optionIdx: number) {
+    const poll = [...polls.values()].find((p) => p.id === pollId);
+    if (!poll) return;
+    const newOptions = poll.options.map((opt, idx) => {
+      let votes = [...opt.votes];
+      if (idx === optionIdx) {
+        if (votes.includes(currentUserId)) {
+          votes = votes.filter((v) => v !== currentUserId);
+        } else {
+          if (!poll.is_multiple_choice) {
+            // Remove vote from other options first (done below)
+          }
+          votes = [...votes, currentUserId];
+        }
+      } else if (!poll.is_multiple_choice) {
+        // Remove vote from all other options
+        votes = votes.filter((v) => v !== currentUserId);
+      }
+      return { ...opt, votes };
+    });
+    // Optimistic update
+    setPolls((prev) => {
+      const next = new Map(prev);
+      next.set(poll.message_id ?? "", { ...poll, options: newOptions });
+      return next;
+    });
+    await supabase.from("polls").update({ options: newOptions }).eq("id", pollId);
+  }
+
+  async function sendPoll(question: string, optionTexts: string[], isMultiple: boolean) {
+    // Create message of type "poll"
+    const { data: msg } = await supabase.from("messages").insert({
+      conversation_id: conversation.id,
+      sender_id: currentUserId,
+      type: "poll",
+      content: question,
+    }).select().single();
+
+    if (!msg) return;
+
+    const options: PollOption[] = optionTexts.map((text) => ({ text, votes: [] }));
+    await supabase.from("polls").insert({
+      message_id: msg.id,
+      conversation_id: conversation.id,
+      question,
+      options,
+      created_by: currentUserId,
+      is_multiple_choice: isMultiple,
+    });
+
+    setMessages((prev) => [...prev, { ...msg, sender: { id: currentUserId } as User } as MessageWithSender]);
+  }
+
+  // ── Reply handler ─────────────────────────────────────────────────────────
+  function handleReply(msg: MessageWithSender) {
+    setReplyingTo(msg);
+    setEditingMsg(null);
+  }
+
+  // ── Edit handlers ─────────────────────────────────────────────────────────
+  function handleStartEdit(msg: MessageWithSender) {
+    setEditingMsg(msg);
+    setEditText(msg.content ?? "");
+    setReplyingTo(null);
+  }
+
+  async function handleSaveEdit() {
+    if (!editingMsg || !editText.trim()) return;
+    const newContent = editText.trim();
+    setEditingMsg(null);
+    setEditText("");
+    setMessages((prev) =>
+      prev.map((m) => m.id === editingMsg.id
+        ? { ...m, content: newContent, edited_at: new Date().toISOString() }
+        : m)
+    );
+    await supabase.from("messages").update({
+      content: newContent,
+      edited_at: new Date().toISOString(),
+    }).eq("id", editingMsg.id);
+  }
+
   // ── React to message ──────────────────────────────────────────────────────
   async function handleReact(msgId: string, emoji: string) {
     const msg = messages.find((m) => m.id === msgId);
@@ -1026,10 +1404,15 @@ export default function ChatView({
 
   // ── Send text message ─────────────────────────────────────────────────────
   async function sendMessage() {
+    // If editing, save edit instead
+    if (editingMsg) { await handleSaveEdit(); return; }
+
     if (!text.trim() || sending) return;
     const plainContent = text.trim();
+    const replyId = replyingTo?.id ?? null;
     setText("");
     clearTyping();
+    setReplyingTo(null);
     setSending(true);
 
     // E2E: encrypt if both parties have keys
@@ -1047,7 +1430,7 @@ export default function ChatView({
       content: plainContent, // show plaintext optimistically
       media_url: null,
       media_metadata: null,
-      reply_to_id: null,
+      reply_to_id: replyId,
       reactions: {},
       is_deleted: false,
       deleted_at: null,
@@ -1067,6 +1450,7 @@ export default function ChatView({
         sender_id: currentUserId,
         type: "text",
         content: storedContent,
+        reply_to_id: replyId,
         ...(isE2E ? { is_e2e: true } : {}),
       })
       .select()
@@ -1097,6 +1481,11 @@ export default function ChatView({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
+    }
+    if (e.key === "Escape") {
+      setReplyingTo(null);
+      setEditingMsg(null);
+      setEditText("");
     }
   }
 
@@ -1292,24 +1681,42 @@ export default function ChatView({
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div ref={msgListRef} className="flex-1 overflow-y-auto py-2">
         {messages.map((msg, idx) => {
           // Substitute decrypted content for E2E messages
           const displayMsg = (msg as any).is_e2e
             ? { ...msg, content: decryptedContents.get(msg.id) ?? "🔒 Entschlüssele…" }
             : msg;
+          const isOwn = msg.sender_id === currentUserId;
+          // Build quoted message preview
+          let quotedMsg: { content: string | null; senderName?: string } | null = null;
+          if (msg.reply_to_id) {
+            const quoted = messages.find((m) => m.id === msg.reply_to_id);
+            if (quoted) {
+              quotedMsg = {
+                content: quoted.content ?? null,
+                senderName: quoted.sender?.display_name ?? undefined,
+              };
+            }
+          }
           return (
           <div key={msg.id}>
             {shouldShowDate(messages, idx) && <DateDivider date={msg.created_at} />}
-            <MessageBubble
-              msg={displayMsg}
-              isOwn={msg.sender_id === currentUserId}
-              showAvatar={idx === 0 || messages[idx - 1].sender_id !== msg.sender_id}
-              currentUserId={currentUserId}
-              onReact={handleReact}
-              onImageClick={setLightboxUrl}
-              onLongPress={(m, y) => setContextMenu({ msg: m, y })}
-            />
+            <div data-msg-id={!isOwn ? msg.id : undefined}>
+              <MessageBubble
+                msg={displayMsg}
+                isOwn={isOwn}
+                showAvatar={idx === 0 || messages[idx - 1].sender_id !== msg.sender_id}
+                currentUserId={currentUserId}
+                onReact={handleReact}
+                onImageClick={setLightboxUrl}
+                onLongPress={(m, y) => setContextMenu({ msg: m, y })}
+                quotedMsg={quotedMsg}
+                isRead={readMsgIds.has(msg.id)}
+                poll={msg.type === "poll" ? polls.get(msg.id) ?? null : null}
+                onVote={handleVote}
+              />
+            </div>
           </div>
         );
         })}
@@ -1330,9 +1737,24 @@ export default function ChatView({
         </div>
       ) : (
         /* Input Bar */
+        <div className="flex-none" style={{ background: "var(--surface)" }}>
+          {/* Reply Preview */}
+          {replyingTo && (
+            <ReplyPreviewBar msg={replyingTo} onCancel={() => setReplyingTo(null)} />
+          )}
+          {/* Edit Mode Banner */}
+          {editingMsg && (
+            <div className="flex items-center gap-2 px-3 py-2 border-t"
+              style={{ background: "#07c16015", borderColor: "var(--border)" }}>
+              <span className="text-sm flex-none">✏️</span>
+              <p className="flex-1 text-xs" style={{ color: "var(--nexio-green)" }}>Nachricht bearbeiten</p>
+              <button onClick={() => { setEditingMsg(null); setEditText(""); setText(""); }}
+                className="flex-none text-xs" style={{ color: "var(--foreground-3)" }}>Abbrechen</button>
+            </div>
+          )}
         <div
-          className="flex-none flex items-end gap-2 px-3 py-2 pb-safe border-t"
-          style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+          className="flex items-end gap-2 px-3 py-2 pb-safe border-t"
+          style={{ borderColor: "var(--border)" }}
         >
           {/* Hidden file inputs */}
           <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden"
@@ -1361,16 +1783,20 @@ export default function ChatView({
             style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
           >
             <textarea
-              value={text}
+              value={editingMsg ? editText : text}
               onChange={(e) => {
-                setText(e.target.value);
+                if (editingMsg) {
+                  setEditText(e.target.value);
+                } else {
+                  setText(e.target.value);
+                  if (e.target.value.trim()) sendTyping();
+                }
                 e.target.style.height = "auto";
                 e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
-                if (e.target.value.trim()) sendTyping();
               }}
               onKeyDown={handleKeyDown}
               onBlur={clearTyping}
-              placeholder="Nachricht schreiben…"
+              placeholder={editingMsg ? "Nachricht bearbeiten…" : "Nachricht schreiben…"}
               rows={1}
               className="w-full resize-none bg-transparent text-sm leading-5 focus:outline-none"
               style={{ color: "var(--foreground)", maxHeight: "120px" }}
@@ -1395,17 +1821,23 @@ export default function ChatView({
           </button>
 
           {/* Send / Voice record */}
-          {text.trim() ? (
+          {(text.trim() || (editingMsg && editText.trim())) ? (
             <button
               onClick={sendMessage}
               disabled={sending}
               className="w-9 h-9 rounded-full flex items-center justify-center flex-none mb-0.5 disabled:opacity-50"
               style={{ background: "var(--nexio-green)" }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
+              {editingMsg ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              )}
             </button>
           ) : (
             <button
@@ -1421,6 +1853,7 @@ export default function ChatView({
               </svg>
             </button>
           )}
+        </div>
         </div>
       )}
 
@@ -1445,6 +1878,15 @@ export default function ChatView({
           onVideo={() => videoInputRef.current?.click()}
           onFile={() => docInputRef.current?.click()}
           onLocation={shareLocation}
+          onPoll={() => setShowCreatePoll(true)}
+        />
+      )}
+
+      {/* Create Poll Sheet */}
+      {showCreatePoll && (
+        <CreatePollSheet
+          onClose={() => setShowCreatePoll(false)}
+          onSubmit={sendPoll}
         />
       )}
 
@@ -1484,6 +1926,8 @@ export default function ChatView({
           onPin={() => handlePinMessage(contextMenu.msg)}
           onForward={() => handleForwardMessage(contextMenu.msg)}
           onDelete={() => handleDeleteMessage(contextMenu.msg)}
+          onReply={() => handleReply(contextMenu.msg)}
+          onEdit={() => handleStartEdit(contextMenu.msg)}
         />
       )}
 
