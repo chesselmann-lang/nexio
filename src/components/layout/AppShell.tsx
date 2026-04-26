@@ -11,7 +11,7 @@ const NAV = [
     href: "/chats",
     label: "Chats",
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24"
+      <svg width="22" height="22" viewBox="0 0 24 24"
         fill={active ? "currentColor" : "none"}
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -22,10 +22,10 @@ const NAV = [
     href: "/social",
     label: "Momente",
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24"
+      <svg width="22" height="22" viewBox="0 0 24 24"
         fill={active ? "currentColor" : "none"}
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <rect x="3" y="3" width="18" height="18" rx="3" />
         <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
         <polyline points="21 15 16 10 5 21" />
       </svg>
@@ -35,7 +35,7 @@ const NAV = [
     href: "/channels",
     label: "Kanäle",
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24"
+      <svg width="22" height="22" viewBox="0 0 24 24"
         fill={active ? "currentColor" : "none"}
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -48,7 +48,7 @@ const NAV = [
     href: "/ai",
     label: "KI",
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24"
+      <svg width="22" height="22" viewBox="0 0 24 24"
         fill={active ? "currentColor" : "none"}
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-6a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z" />
@@ -62,7 +62,7 @@ const NAV = [
     href: "/profile",
     label: "Ich",
     icon: (active: boolean) => (
-      <svg width="24" height="24" viewBox="0 0 24 24"
+      <svg width="22" height="22" viewBox="0 0 24 24"
         fill={active ? "currentColor" : "none"}
         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -80,7 +80,6 @@ export default function AppShell({
   profile: User | null;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const supabase = createClient();
   const [unreadNotifs, setUnreadNotifs] = useState(0);
 
@@ -88,33 +87,19 @@ export default function AppShell({
     pathname === href || pathname.startsWith(href + "/");
 
   useEffect(() => {
-    // Load initial unread count
     supabase
       .from("notifications")
       .select("id", { count: "exact", head: true })
       .eq("is_read", false)
       .then(({ count }) => setUnreadNotifs(count ?? 0));
 
-    // Realtime: new notifications
     const channel = supabase
       .channel("appshell-notifs")
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "notifications",
-      }, () => setUnreadNotifs((n) => n + 1))
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "notifications",
-      }, () => {
-        // Refetch count on any update
-        supabase
-          .from("notifications")
-          .select("id", { count: "exact", head: true })
-          .eq("is_read", false)
-          .then(({ count }) => setUnreadNotifs(count ?? 0));
-      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" },
+        () => setUnreadNotifs((n) => n + 1))
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications" },
+        () => supabase.from("notifications").select("id", { count: "exact", head: true })
+          .eq("is_read", false).then(({ count }) => setUnreadNotifs(count ?? 0)))
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -122,7 +107,6 @@ export default function AppShell({
 
   return (
     <div className="h-full flex flex-col" style={{ background: "var(--background)" }}>
-      {/* Incoming call overlay — global */}
       {profile?.id && (
         <IncomingCallBanner
           currentUserId={profile.id}
@@ -130,19 +114,17 @@ export default function AppShell({
         />
       )}
 
-      {/* Main content */}
       <main className="flex-1 overflow-hidden relative">{children}</main>
 
-      {/* Bottom Navigation — WeChat style */}
+      {/* Bottom Navigation — Glassmorphism */}
       <nav
-        className="flex-none border-t pb-safe"
+        className="flex-none pb-safe glass-nav"
         style={{
-          background: "var(--surface)",
-          borderColor: "var(--border)",
           height: "var(--nav-height)",
+          borderTop: "1px solid var(--border)",
         }}
       >
-        <div className="flex h-full">
+        <div className="flex h-full items-center">
           {NAV.map(({ href, label, icon }) => {
             const active = isActive(href);
             const isProfile = href === "/profile";
@@ -150,24 +132,25 @@ export default function AppShell({
               <Link
                 key={href}
                 href={href}
-                className="flex-1 flex flex-col items-center justify-center gap-0.5 select-none relative"
-                style={{
-                  color: active ? "var(--nexio-green)" : "var(--foreground-3)",
-                  transition: "color 0.15s",
-                }}
+                className="flex-1 flex flex-col items-center justify-center h-full select-none"
+                style={{ color: active ? "var(--nav-active)" : "var(--nav-inactive)", transition: "color 0.15s" }}
               >
-                <span className="w-6 h-6 flex items-center justify-center relative">
-                  {icon(active)}
-                  {isProfile && unreadNotifs > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold px-0.5"
-                      style={{ background: "#ef4444" }}>
-                      {unreadNotifs > 99 ? "99+" : unreadNotifs}
-                    </span>
-                  )}
-                </span>
-                <span className="text-[10px] font-medium" style={{ letterSpacing: "0.01em" }}>
-                  {label}
-                </span>
+                <div className={`nav-pill${active ? " active" : ""} flex flex-col items-center gap-0.5`}>
+                  <span className="w-6 h-6 flex items-center justify-center relative">
+                    {icon(active)}
+                    {isProfile && unreadNotifs > 0 && (
+                      <span
+                        className="absolute -top-1 -right-1 min-w-[16px] h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold px-0.5"
+                        style={{ background: "#ef4444" }}
+                      >
+                        {unreadNotifs > 99 ? "99+" : unreadNotifs}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-[10px] font-medium" style={{ letterSpacing: "0.01em" }}>
+                    {label}
+                  </span>
+                </div>
               </Link>
             );
           })}

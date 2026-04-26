@@ -1,64 +1,107 @@
 @import "tailwindcss";
 
 /* ============================================================
-   NEXIO — Design System
-   European WeChat Alternative
+   NEXIO — Design System v2 (Dark Premium)
+   European Super-App
    ============================================================ */
 
 :root {
-  /* Brand Colors */
-  --nexio-green: #07c160;
-  --nexio-green-dark: #06ad56;
-  --nexio-green-light: #e8f9f0;
-  --nexio-blue: #1677ff;
-  --nexio-blue-light: #e6f0ff;
+  /* ── Brand ───────────────────────────────────────────── */
+  --nexio-green:        #07c160;
+  --nexio-green-dark:   #06ad56;
+  --nexio-green-light:  #0a2e1a;
+  --nexio-indigo:       #7c5cfc;
+  --nexio-indigo-dark:  #6a48f0;
+  --nexio-indigo-light: #1d1640;
+  --nexio-blue:         #1677ff;
+  --nexio-blue-light:   #0d1f40;
 
-  /* Surfaces */
-  --background: #f5f5f5;
-  --surface: #ffffff;
-  --surface-2: #f0f0f0;
-  --border: #e5e5e5;
+  /* ── Surfaces — Dark Premium ─────────────────────────── */
+  --background:   #0d0f14;
+  --surface:      #161920;
+  --surface-2:    #1e2230;
+  --border:       #282d3c;
+  --border-light: #1e2230;
 
-  /* Text */
-  --foreground: #191919;
-  --foreground-2: #666666;
-  --foreground-3: #999999;
+  /* ── Text ────────────────────────────────────────────── */
+  --foreground:   #eef0f7;
+  --foreground-2: #8b90a8;
+  --foreground-3: #50546a;
 
-  /* Chat */
-  --bubble-sent: var(--nexio-green);
-  --bubble-sent-text: #ffffff;
-  --bubble-received: #ffffff;
+  /* ── Chat Bubbles ────────────────────────────────────── */
+  --bubble-sent:          #7c5cfc;
+  --bubble-sent-text:     #ffffff;
+  --bubble-received:      #1e2230;
+  --bubble-received-text: #eef0f7;
+  --bubble-sent-time:     rgba(255,255,255,0.55);
+  --bubble-received-time: #50546a;
+
+  /* ── Glassmorphism ───────────────────────────────────── */
+  --glass-bg:   rgba(13, 15, 20, 0.88);
+  --glass-blur: blur(24px) saturate(180%);
+
+  /* ── Nav ─────────────────────────────────────────────── */
+  --nav-height:     64px;
+  --header-height:  56px;
+  --nav-active:     var(--nexio-indigo);
+  --nav-inactive:   var(--foreground-3);
+  --pill-active-bg: rgba(124, 92, 252, 0.14);
+
+  /* ── Story ring ──────────────────────────────────────── */
+  --story-ring-start: #7c5cfc;
+  --story-ring-end:   #07c160;
+  --story-ring-bg:    var(--background);
+}
+
+/* ── Light mode ──────────────────────────────────────────── */
+.light {
+  --background:           #f5f5f5;
+  --surface:              #ffffff;
+  --surface-2:            #f0f0f0;
+  --border:               #e5e5e5;
+  --border-light:         #f0f0f0;
+  --foreground:           #191919;
+  --foreground-2:         #666666;
+  --foreground-3:         #999999;
+  --bubble-sent:          var(--nexio-indigo);
+  --bubble-received:      #ffffff;
   --bubble-received-text: #191919;
-
-  /* Nav */
-  --nav-height: 64px;
-  --header-height: 56px;
+  --bubble-sent-time:     rgba(255,255,255,0.65);
+  --bubble-received-time: #999999;
+  --glass-bg:             rgba(255,255,255,0.88);
+  --nav-active:           var(--nexio-indigo);
+  --pill-active-bg:       rgba(124,92,252,0.1);
+  --nexio-indigo-light:   #f0edff;
+  --nexio-green-light:    #e8f9f0;
+  --nexio-blue-light:     #e6f0ff;
+  --story-ring-bg:        var(--background);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-surface: var(--surface);
-  --color-border: var(--border);
-  --color-nexio-green: var(--nexio-green);
-  --color-nexio-blue: var(--nexio-blue);
-  --font-sans: var(--font-geist-sans);
-}
-
+/* keep .dark mapped to same dark tokens (backwards compat) */
 .dark {
-  --background: #111111;
-  --surface: #1c1c1c;
-  --surface-2: #262626;
-  --border: #2a2a2a;
-  --foreground: #f0f0f0;
-  --foreground-2: #a0a0a0;
-  --foreground-3: #666666;
-  --bubble-received: #2a2a2a;
-  --bubble-received-text: #f0f0f0;
-  --nexio-green-light: #0d2b1a;
+  --background:           #0d0f14;
+  --surface:              #161920;
+  --surface-2:            #1e2230;
+  --border:               #282d3c;
+  --foreground:           #eef0f7;
+  --foreground-2:         #8b90a8;
+  --foreground-3:         #50546a;
+  --bubble-received:      #1e2230;
+  --bubble-received-text: #eef0f7;
 }
 
-/* Base */
+/* ── Tailwind theme bridge ───────────────────────────────── */
+@theme inline {
+  --color-background:   var(--background);
+  --color-foreground:   var(--foreground);
+  --color-surface:      var(--surface);
+  --color-border:       var(--border);
+  --color-nexio-green:  var(--nexio-green);
+  --color-nexio-indigo: var(--nexio-indigo);
+  --color-nexio-blue:   var(--nexio-blue);
+  --font-sans:          var(--font-geist-sans);
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -75,35 +118,86 @@ body {
   overscroll-behavior: none;
 }
 
-/* Scrollbars */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar         { width: 3px; height: 3px; }
+::-webkit-scrollbar-track   { background: transparent; }
+::-webkit-scrollbar-thumb   { background: var(--border); border-radius: 2px; }
 
-/* Chat message bubbles */
 .bubble-sent {
-  background: var(--bubble-sent);
-  color: var(--bubble-sent-text);
-  border-radius: 18px 4px 18px 18px;
+  background:    var(--bubble-sent);
+  color:         var(--bubble-sent-text);
+  border-radius: 20px 4px 20px 20px;
+  position:      relative;
 }
 .bubble-received {
-  background: var(--bubble-received);
-  color: var(--bubble-received-text);
-  border-radius: 4px 18px 18px 18px;
+  background:    var(--bubble-received);
+  color:         var(--bubble-received-text);
+  border-radius: 4px 20px 20px 20px;
+  position:      relative;
+}
+.bubble-sent     .bubble-time { color: var(--bubble-sent-time); }
+.bubble-received .bubble-time { color: var(--bubble-received-time); }
+.bubble-time {
+  font-size:   10px;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-/* Safe area for iOS */
+.glass-nav {
+  background:              var(--glass-bg) !important;
+  backdrop-filter:         var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+.nav-pill {
+  border-radius: 14px;
+  padding:       6px 16px;
+  transition:    background 0.2s;
+}
+.nav-pill.active {
+  background: var(--pill-active-bg);
+}
+
+.story-ring {
+  padding:       2px;
+  border-radius: 50%;
+  background:    linear-gradient(135deg, var(--story-ring-start) 0%, var(--story-ring-end) 100%);
+}
+.story-ring-inner {
+  background:      var(--story-ring-bg);
+  border-radius:   50%;
+  padding:         2px;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+}
+
+.gradient-brand {
+  background: linear-gradient(135deg, var(--nexio-indigo) 0%, var(--nexio-green) 100%);
+}
+
+.badge-unread {
+  background:      var(--nexio-indigo);
+  color:           #fff;
+  border-radius:   999px;
+  font-size:       11px;
+  font-weight:     700;
+  min-width:       20px;
+  height:          20px;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  padding:         0 5px;
+}
+
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-.pt-safe { padding-top: env(safe-area-inset-top); }
+.pt-safe { padding-top:    env(safe-area-inset-top); }
 
-/* Smooth transitions */
 .page-enter { animation: fadeIn 0.15s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-
-/* Input focus */
-input:focus, textarea:focus {
-  outline: none;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
 }
 
-/* Prevent text selection on UI elements */
+input:focus, textarea:focus { outline: none; }
 .no-select { user-select: none; -webkit-user-select: none; }

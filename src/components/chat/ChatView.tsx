@@ -417,7 +417,7 @@ function MessageBubble({
               {msg.edited_at && (
                 <span className="text-[9px] opacity-40 italic">bearbeitet</span>
               )}
-              <span className="text-[10px] opacity-50">
+              <span className="bubble-time">
                 {format(new Date(msg.created_at), "HH:mm")}
               </span>
               {isOwn && (
@@ -433,7 +433,7 @@ function MessageBubble({
                   {/* First tick always visible */}
                   <path
                     d={isRead ? "M1 5l4 4 8-8" : "M4 5l4 4 8-8"}
-                    stroke={isRead ? "#07c160" : "currentColor"}
+                    stroke={isRead ? "var(--nexio-indigo)" : "currentColor"}
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -863,7 +863,7 @@ function PollMessage({ poll, currentUserId, onVote }: {
           </button>
         );
       })}
-      <p className="text-[10px] opacity-50">{totalVotes} Stimme{totalVotes !== 1 ? "n" : ""} · {poll.is_multiple_choice ? "Mehrfachauswahl" : "Einzelauswahl"}</p>
+      <p className="bubble-time">{totalVotes} Stimme{totalVotes !== 1 ? "n" : ""} · {poll.is_multiple_choice ? "Mehrfachauswahl" : "Einzelauswahl"}</p>
     </div>
   );
 }

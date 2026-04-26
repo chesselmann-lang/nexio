@@ -24,40 +24,58 @@ function getAvatar(conv: ConversationWithMembers, currentUserId: string): string
   return null;
 }
 
-function AvatarCircle({ src, name, size = 48 }: { src: string | null; name: string; size?: number }) {
+const AVATAR_COLORS = ["#7c5cfc", "#07c160", "#1677ff", "#f59e0b", "#ef4444", "#8b5cf6"];
+function avatarColor(name: string) {
+  return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+}
+
+function AvatarCircle({
+  src, name, size = 48, hasStory = false,
+}: { src: string | null; name: string; size?: number; hasStory?: boolean }) {
   const initials = name.slice(0, 2).toUpperCase();
-  const colors = ["#07c160", "#1677ff", "#ff6b35", "#8b5cf6", "#ef4444", "#f59e0b"];
-  const color = colors[name.charCodeAt(0) % colors.length];
-  if (src) {
-    return <img src={src} alt={name} width={size} height={size}
-      className="rounded-full object-cover" style={{ width: size, height: size }} />;
-  }
-  return (
-    <div className="rounded-full flex items-center justify-center text-white font-semibold flex-none"
-      style={{ width: size, height: size, background: color, fontSize: size * 0.35 }}>
+  const color = avatarColor(name);
+
+  const img = src ? (
+    <img src={src} alt={name} width={size} height={size}
+      className="rounded-full object-cover flex-none"
+      style={{ width: size, height: size }} />
+  ) : (
+    <div
+      className="rounded-full flex items-center justify-center text-white font-semibold flex-none"
+      style={{ width: size, height: size, background: color, fontSize: size * 0.35 }}
+    >
       {initials}
+    </div>
+  );
+
+  if (!hasStory) return img;
+
+  return (
+    <div className="story-ring flex-none" style={{ width: size + 6, height: size + 6 }}>
+      <div className="story-ring-inner">{img}</div>
     </div>
   );
 }
 
-// ── Single conversation row with long-press context menu ──────────────────────
+function relTime(iso: string) {
+  return formatDistanceToNow(new Date(iso), { addSuffix: false, locale: de });
+}
+
 function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; currentUserId: string }) {
   const supabase = createClient();
-  const name = getConversationName(conv, currentUserId);
+  const name   = getConversationName(conv, currentUserId);
   const avatar = getAvatar(conv, currentUserId);
   const lastMsg = conv.last_message;
-  const unread = conv.unread_count ?? 0;
+  const unread  = conv.unread_count ?? 0;
 
-  // is_muted is on the membership row; we initialise from the member entry for currentUser
   const myMembership = conv.members?.find((m: any) => m.user_id === currentUserId);
-  const [isMuted, setIsMuted] = useState<boolean>((myMembership as any)?.is_muted ?? false);
+  const [isMuted, setIsMuted]   = useState<boolean>((myMembership as any)?.is_muted ?? false);
   const [showMenu, setShowMenu] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePressStart = useCallback(() => {
     longPressTimer.current = setTimeout(() => setShowMenu(true), 500);
   }, []);
-
   const handlePressEnd = useCallback(() => {
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   }, []);
@@ -74,14 +92,13 @@ function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; curre
   }
 
   const lastMsgPreview = lastMsg
-    ? lastMsg.type === "text"
-      ? (lastMsg.content ?? "")
-      : lastMsg.type === "image" ? "📷 Foto"
-      : lastMsg.type === "audio" ? "🎙 Sprachnachricht"
-      : lastMsg.type === "video" ? "🎥 Video"
-      : lastMsg.type === "payment" ? "💶 Zahlung"
-      : lastMsg.type === "system" ? "ℹ️ Systemnachricht"
-      : "Nachricht"
+    ? lastMsg.type === "text"    ? (lastMsg.content ?? "")
+    : lastMsg.type === "image"   ? "📷 Foto"
+    : lastMsg.type === "audio"   ? "🎙 Sprachnachricht"
+    : lastMsg.type === "video"   ? "🎥 Video"
+    : lastMsg.type === "payment" ? "💶 Zahlung"
+    : lastMsg.type === "system"  ? "ℹ️ Systemnachricht"
+    : "Nachricht"
     : "Noch keine Nachrichten";
 
   return (
@@ -97,44 +114,44 @@ function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; curre
         <Link
           href={`/chats/${conv.id}`}
           className="flex items-center gap-3 px-4 py-3 active:opacity-70 transition-opacity"
-          style={{ background: "var(--surface)" }}
+          style={{ background: "var(--background)" }}
         >
-          {/* Avatar with mute indicator */}
           <div className="relative flex-none">
-            <AvatarCircle src={avatar} name={name} size={52} />
+            <AvatarCircle src={avatar} name={name} size={54} />
             {isMuted && (
               <span className="absolute -bottom-0.5 -right-0.5 text-[11px] leading-none">🔕</span>
             )}
           </div>
 
-          {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-semibold truncate" style={{ color: "var(--foreground)" }}>
+              <span className="font-semibold text-[15px] truncate" style={{ color: "var(--foreground)" }}>
                 {name}
               </span>
               {lastMsg && (
-                <span className="text-xs flex-none" style={{ color: "var(--foreground-3)" }}>
-                  {formatDistanceToNow(new Date(lastMsg.created_at), { addSuffix: false, locale: de })}
+                <span className="text-[11px] flex-none" style={{ color: "var(--foreground-3)" }}>
+                  {relTime(lastMsg.created_at)}
                 </span>
               )}
             </div>
+
             <div className="flex items-center justify-between gap-2 mt-0.5">
-              <p className="text-sm truncate" style={{ color: isMuted ? "var(--foreground-3)" : "var(--foreground-2)" }}>
+              <p className="text-[13px] truncate leading-snug"
+                style={{ color: isMuted ? "var(--foreground-3)" : "var(--foreground-2)" }}>
                 {lastMsgPreview}
               </p>
               {unread > 0 && !isMuted && (
                 <span
-                  className="rounded-full text-white text-xs font-semibold px-1.5 py-0.5 min-w-5 text-center flex-none"
-                  style={{ background: "var(--nexio-green)" }}
+                  className="rounded-full text-white text-[11px] font-bold px-1.5 min-w-[20px] h-5 flex items-center justify-center flex-none"
+                  style={{ background: "var(--nexio-indigo)" }}
                 >
                   {unread > 99 ? "99+" : unread}
                 </span>
               )}
               {unread > 0 && isMuted && (
                 <span
-                  className="rounded-full text-xs font-semibold px-1.5 py-0.5 min-w-5 text-center flex-none"
-                  style={{ background: "var(--border)", color: "var(--foreground-3)" }}
+                  className="rounded-full text-[11px] font-bold px-1.5 min-w-[20px] h-5 flex items-center justify-center flex-none"
+                  style={{ background: "var(--surface-2)", color: "var(--foreground-3)" }}
                 >
                   {unread > 99 ? "99+" : unread}
                 </span>
@@ -143,12 +160,11 @@ function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; curre
           </div>
         </Link>
 
-        {/* Long-press context menu */}
         {showMenu && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)}></div>
+            <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
             <div
-              className="absolute left-4 top-full mt-1 z-50 rounded-2xl shadow-xl overflow-hidden min-w-[180px]"
+              className="absolute left-4 top-full mt-1 z-50 rounded-2xl shadow-2xl overflow-hidden min-w-[200px]"
               style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
             >
               <button
@@ -163,7 +179,7 @@ function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; curre
               <Link
                 href={`/chats/${conv.id}`}
                 onClick={() => setShowMenu(false)}
-                className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 text-sm"
                 style={{ color: "var(--foreground)" }}
               >
                 <span>💬</span>
@@ -173,12 +189,11 @@ function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; curre
           </>
         )}
       </div>
-      <div className="ml-[76px] border-b" style={{ borderColor: "var(--border)" }} />
+      <div className="ml-[82px] border-b" style={{ borderColor: "var(--border-light, var(--border))" }} />
     </li>
   );
 }
 
-// ── Main list ─────────────────────────────────────────────────────────────────
 export default function ConversationList({
   conversations,
   currentUserId,
