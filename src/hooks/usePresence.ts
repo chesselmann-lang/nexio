@@ -1,86 +1,68 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * Tracks online users via Supabase Realtime + users.status column.
- * - Sets own status to "online" on mount, "offline" on unmount
- * - Subscribes to realtime user status changes
- * - Returns Set<userId> of currently online users
+ * usePresence
+ *
+ * Broadcasts the current user as "online" (and "offline" on unmount).
+ * Subscribes to all users' status changes and returns a Set of user IDs
+ * that are currently online.
  */
 export function usePresence(currentUserId: string | null): Set<string> {
-  const supabase = createClient();
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const supabase = createClient();
 
   useEffect(() => {
     if (!currentUserId) return;
 
-    // Mark self as online immediately
-    supabase
-      .from("users")
-      .update({ status: "online", last_seen: new Date().toISOString() })
-      .eq("id", currentUserId)
-      .then(() => {});
+    // Set self online immediately
+    supabase.from("users").update({ status: "online", last_seen: new Date().toISOString() })
+      .eq("id", currentUserId);
 
-    // Load current online users
-    supabase
-      .from("users")
-      .select("id, status")
-      .eq("status", "online")
-      .then(({ data }) => {
-        if (data) setOnlineUsers(new Set(data.map((u) => u.id)));
-      });
+    // 60s heartbeat
+    const heartbeat = setInterval(() => {
+      supabase.from("users").update({ last_seen: new Date().toISOString() })
+        .eq("id", currentUserId);
+    }, 60_000);
 
-    // Subscribe to status changes
-    const channel = supabase
-      .channel("presence-status")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "users" },
-        (payload) => {
-          const u = payload.new as { id: string; status: string };
-          setOnlineUsers((prev) => {
-            const next = new Set(prev);
-            if (u.status === "online") next.add(u.id);
-            else next.delete(u.id);
-            return next;
-          });
-        }
-      )
-      .subscribe();
-
-    // Away when tab hidden, online when tab visible
-    const onVisibility = () => {
+    // Visibility change: away/online
+    function onVisibility() {
       const status = document.hidden ? "away" : "online";
-      supabase
-        .from("users")
-        .update({ status, last_seen: new Date().toISOString() })
-        .eq("id", currentUserId)
-        .then(() => {});
-    };
+      supabase.from("users").update({ status, last_seen: new Date().toISOString() })
+        .eq("id", currentUserId!);
+    }
     document.addEventListener("visibilitychange", onVisibility);
 
-    // Heartbeat every 60s to keep last_seen fresh
-    const heartbeat = setInterval(() => {
-      if (!document.hidden) {
-        supabase
-          .from("users")
-          .update({ last_seen: new Date().toISOString() })
-          .eq("id", currentUserId)
-          .then(() => {});
-      }
-    }, 60_000);
+    // Realtime: subscribe to all status changes
+    const channel = supabase
+      .channel("presence-global")
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "users",
+        // No filter — watch all user updates for online status
+      }, (payload) => {
+        const updated = payload.new as { id: string; status: string };
+        setOnlineUsers((prev) => {
+          const next = new Set(prev);
+          if (updated.status === "online") {
+            next.add(updated.id);
+          } else {
+            next.delete(updated.id);
+          }
+          return next;
+        });
+      })
+      .subscribe();
 
     return () => {
       clearInterval(heartbeat);
       document.removeEventListener("visibilitychange", onVisibility);
+      supabase.from("users").update({ status: "offline", last_seen: new Date().toISOString() })
+        .eq("id", currentUserId);
       supabase.removeChannel(channel);
-      // Mark offline on unmount (SPA navigation covers this)
-      supabase
-        .from("users")
-        .update({ status: "offline", last_seen: new Date().toISOString() })
-        .eq("id", currentUserId)
-        .then(() => {});
     };
   }, [currentUserId]);
 
@@ -88,44 +70,38 @@ export function usePresence(currentUserId: string | null): Set<string> {
 }
 
 /**
- * Subscribe to a single user's status + last_seen.
+ * useUserStatus
+ *
+ * Returns the live status + last_seen for a single user.
  */
-export function useUserStatus(userId: string | null) {
+export function useUserStatus(userId: string | null): {
+  status: "online" | "away" | "offline";
+  last_seen: string;
+} | null {
+  const [status, setStatus] = useState<{ status: "online" | "away" | "offline"; last_seen: string } | null>(null);
   const supabase = createClient();
-  const [status, setStatus] = useState<{
-    status: "online" | "away" | "offline";
-    last_seen: string;
-  } | null>(null);
 
   useEffect(() => {
     if (!userId) return;
 
     // Initial fetch
-    supabase
-      .from("users")
-      .select("status, last_seen")
-      .eq("id", userId)
-      .single()
+    supabase.from("users").select("status, last_seen").eq("id", userId).maybeSingle()
       .then(({ data }) => {
-        if (data) setStatus(data as any);
+        if (data) setStatus({ status: (data.status ?? "offline") as any, last_seen: data.last_seen ?? "" });
       });
 
-    // Realtime subscription
+    // Subscribe to changes for this user
     const channel = supabase
       .channel(`user-status-${userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "users",
-          filter: `id=eq.${userId}`,
-        },
-        (payload) => {
-          const u = payload.new as { status: string; last_seen: string };
-          setStatus({ status: u.status as any, last_seen: u.last_seen });
-        }
-      )
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "users",
+        filter: `id=eq.${userId}`,
+      }, (payload) => {
+        const u = payload.new as { status: string; last_seen: string };
+        setStatus({ status: (u.status ?? "offline") as any, last_seen: u.last_seen ?? "" });
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };

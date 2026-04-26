@@ -1,7 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { BellIcon } from "@heroicons/react/24/outline";
 import { formatDistanceToNow } from "date-fns";
 import { de } from "date-fns/locale";
 
@@ -10,228 +12,305 @@ interface Notif {
   type: string;
   title: string;
   body: string | null;
-  resource_id: string | null;
-  resource_type: string | null;
+  resource_url: string | null;
   is_read: boolean;
   created_at: string;
-  actor?: { display_name: string; avatar_url: string | null } | null;
 }
 
-const TYPE_ICON: Record<string, string> = {
-  message:       "💬",
-  reaction:      "❤️",
-  story_view:    "👁️",
-  channel_post:  "📢",
-  contact_added: "👤",
-  mention:       "🔔",
-  system:        "ℹ️",
-};
-
 export default function NotificationBell() {
-  const router    = useRouter();
-  const supabase  = createClient();
-  const [open, setOpen]   = useState(false);
-  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const router = useRouter();
+  const supabase = createClient();
+  const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [loading, setLoading] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  // ── Initial badge count + realtime ────────────────────────────────────────
+  // Load unread count on mount
   useEffect(() => {
-    supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("is_read", false)
-      .then(({ count }) => setUnread(count ?? 0));
+    let mounted = true;
+    async function loadCount() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { count } = await supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false);
+      if (mounted) setUnread(count ?? 0);
+    }
+    loadCount();
 
-    const ch = supabase
-      .channel("notif-bell")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications" },
-        () => setUnread((n) => n + 1))
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications" },
-        () =>
-          supabase.from("notifications").select("id", { count: "exact", head: true })
-            .eq("is_read", false)
-            .then(({ count }) => setUnread(count ?? 0)))
-      .subscribe();
+    // Realtime subscription for new notifications
+    let channel: any;
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      channel = supabase
+        .channel("notif-bell")
+        .on("postgres_changes", {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${user.id}`,
+        }, () => {
+          if (mounted) setUnread((n) => n + 1);
+        })
+        .subscribe();
+    });
 
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      mounted = false;
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
-  // ── Load recent notifs when panel opens ───────────────────────────────────
+  // Close panel on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   async function openPanel() {
     setOpen(true);
+    if (notifs.length > 0) return;
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
     const { data } = await supabase
       .from("notifications")
-      .select("*, actor:users!notifications_actor_id_fkey(display_name, avatar_url)")
+      .select("*")
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(8);
     setNotifs((data ?? []) as Notif[]);
-  }
-
-  async function markRead(id: string) {
-    await supabase.from("notifications").update({ is_read: true }).eq("id", id);
-    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-    setUnread((c) => Math.max(0, c - 1));
-  }
-
-  async function markAllRead() {
-    await supabase.from("notifications").update({ is_read: true }).eq("is_read", false);
-    setNotifs((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    setLoading(false);
+    // Mark all as read
+    await supabase.from("notifications").update({ is_read: true })
+      .eq("user_id", user.id).eq("is_read", false);
     setUnread(0);
   }
 
-  function handleClick(n: Notif) {
-    markRead(n.id);
-    setOpen(false);
-    if (n.resource_type === "conversation" && n.resource_id)
-      router.push(`/chats/${n.resource_id}`);
-    else if (n.resource_type === "channel" && n.resource_id)
-      router.push(`/channels/${n.resource_id}`);
-    else if (n.resource_type === "user" && n.resource_id)
-      router.push(`/u/${n.resource_id}`);
+  async function markAllRead() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("notifications").update({ is_read: true })
+      .eq("user_id", user.id).eq("is_read", false);
+    setUnread(0);
+    setNotifs((n) => n.map((x) => ({ ...x, is_read: true })));
   }
 
+  const NOTIF_ICONS: Record<string, string> = {
+    message: "💬", reaction: "❤️", friend_request: "👤",
+    system: "⚙️", payment: "💸", story_view: "👁️", mention: "@",
+  };
+
   return (
-    <>
-      {/* Bell button */}
+    <div style={{ position: "relative" }} ref={panelRef}>
       <button
-        onClick={openPanel}
-        className="w-9 h-9 flex items-center justify-center rounded-full relative"
-        style={{ color: "var(--foreground-3)" }}
+        onClick={open ? () => setOpen(false) : openPanel}
+        className="w-9 h-9 flex items-center justify-center rounded-full"
+        style={{
+          background: "transparent",
+          border: "none",
+          color: "var(--foreground-3)",
+          cursor: "pointer",
+          position: "relative",
+        }}
         aria-label="Benachrichtigungen"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-        </svg>
+        <BellIcon style={{ width: 20, height: 20 }} />
         {unread > 0 && (
           <span
-            className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full flex items-center justify-center text-white text-[9px] font-bold px-0.5"
-            style={{ background: "#ef4444" }}
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              width: 16,
+              height: 16,
+              borderRadius: 8,
+              background: "#ef4444",
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "2px solid var(--background)",
+            }}
           >
-            {unread > 99 ? "99+" : unread}
+            {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
 
-      {/* Slide-up overlay */}
       {open && (
-        <>
-          {/* Backdrop */}
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            right: 0,
+            width: 320,
+            maxHeight: 420,
+            borderRadius: 16,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
+            zIndex: 100,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {/* Panel header */}
           <div
-            className="fixed inset-0 z-40"
-            style={{ background: "rgba(0,0,0,0.5)" }}
-            onClick={() => setOpen(false)}
-          />
-
-          {/* Panel */}
-          <div
-            className="fixed left-0 right-0 bottom-0 z-50 rounded-t-3xl flex flex-col"
             style={{
-              maxHeight: "75vh",
-              background: "var(--surface)",
-              boxShadow: "0 -8px 40px rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 14px",
+              borderBottom: "1px solid var(--border)",
             }}
           >
-            {/* Handle */}
-            <div className="w-10 h-1 rounded-full mx-auto mt-3 mb-1 flex-none"
-              style={{ background: "var(--border)" }} />
-
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 flex-none border-b"
-              style={{ borderColor: "var(--border)" }}>
-              <h2 className="font-semibold text-base" style={{ color: "var(--foreground)" }}>
-                Benachrichtigungen
-                {unread > 0 && (
-                  <span className="ml-2 text-xs px-2 py-0.5 rounded-full text-white"
-                    style={{ background: "var(--nexio-indigo)" }}>{unread}</span>
-                )}
-              </h2>
-              {unread > 0 && (
-                <button onClick={markAllRead}
-                  className="text-xs font-semibold"
-                  style={{ color: "var(--nexio-indigo)" }}>
-                  Alle gelesen
-                </button>
-              )}
-            </div>
-
-            {/* Notification list */}
-            <div className="overflow-y-auto flex-1">
-              {notifs.length === 0 ? (
-                <div className="flex flex-col items-center py-12 gap-2">
-                  <span className="text-4xl">🔔</span>
-                  <p className="text-sm" style={{ color: "var(--foreground-3)" }}>
-                    Keine neuen Benachrichtigungen
-                  </p>
-                </div>
-              ) : (
-                notifs.map((n) => {
-                  const actor = n.actor as any;
-                  return (
-                    <button key={n.id} onClick={() => handleClick(n)}
-                      className="w-full flex items-start gap-3 px-4 py-3 border-b text-left active:opacity-70 transition-opacity"
-                      style={{
-                        background: n.is_read ? "var(--surface)" : "rgba(124,92,252,0.07)",
-                        borderColor: "var(--border)",
-                      }}>
-                      {/* Actor / icon */}
-                      <div className="flex-none relative mt-0.5">
-                        {actor?.display_name ? (
-                          <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-bold"
-                            style={{ background: "var(--nexio-indigo)" }}>
-                            {actor.avatar_url
-                              ? <img src={actor.avatar_url} alt="" className="w-full h-full object-cover" />
-                              : actor.display_name.slice(0, 1)}
-                          </div>
-                        ) : (
-                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
-                            style={{ background: "var(--surface-2)" }}>
-                            {TYPE_ICON[n.type] ?? "🔔"}
-                          </div>
-                        )}
-                        {actor?.display_name && (
-                          <span className="absolute -bottom-0.5 -right-0.5 text-sm leading-none">
-                            {TYPE_ICON[n.type] ?? "🔔"}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold leading-tight" style={{ color: "var(--foreground)" }}>
-                          {n.title}
-                        </p>
-                        {n.body && (
-                          <p className="text-xs mt-0.5 line-clamp-2" style={{ color: "var(--foreground-2)" }}>
-                            {n.body}
-                          </p>
-                        )}
-                        <p className="text-[11px] mt-0.5" style={{ color: "var(--foreground-3)" }}>
-                          {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: de })}
-                        </p>
-                      </div>
-
-                      {!n.is_read && (
-                        <div className="w-2 h-2 rounded-full flex-none mt-2"
-                          style={{ background: "var(--nexio-indigo)" }} />
-                      )}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Footer: view all */}
-            <button
-              onClick={() => { setOpen(false); router.push("/notifications"); }}
-              className="flex-none w-full py-4 text-sm font-semibold border-t"
-              style={{ color: "var(--nexio-indigo)", borderColor: "var(--border)" }}
+            <span
+              className="font-semibold text-sm"
+              style={{ color: "var(--foreground)" }}
             >
-              Alle Benachrichtigungen anzeigen →
+              Benachrichtigungen
+            </span>
+            <button
+              onClick={markAllRead}
+              style={{
+                fontSize: 12,
+                color: "var(--nexio-indigo)",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Alle gelesen
             </button>
           </div>
-        </>
+
+          {/* List */}
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            {loading && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--foreground-3)", fontSize: 13 }}>
+                Lädt…
+              </div>
+            )}
+            {!loading && notifs.length === 0 && (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--foreground-3)", fontSize: 13 }}>
+                Keine Benachrichtigungen
+              </div>
+            )}
+            {!loading && notifs.map((n) => (
+              <button
+                key={n.id}
+                onClick={() => {
+                  setOpen(false);
+                  if (n.resource_url) router.push(n.resource_url);
+                }}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  padding: "10px 14px",
+                  background: n.is_read ? "transparent" : "rgba(124,92,252,0.07)",
+                  border: "none",
+                  borderBottom: "1px solid var(--border)",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <div
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    background: "var(--surface-2)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 16,
+                    flexShrink: 0,
+                  }}
+                >
+                  {NOTIF_ICONS[n.type] ?? "🔔"}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p
+                    className="text-sm font-medium"
+                    style={{
+                      color: "var(--foreground)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {n.title}
+                  </p>
+                  {n.body && (
+                    <p
+                      className="text-xs"
+                      style={{
+                        color: "var(--foreground-3)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        marginTop: 2,
+                      }}
+                    >
+                      {n.body}
+                    </p>
+                  )}
+                  <p className="text-xs" style={{ color: "var(--foreground-3)", marginTop: 2 }}>
+                    {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: de })}
+                  </p>
+                </div>
+                {!n.is_read && (
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      background: "var(--nexio-indigo)",
+                      flexShrink: 0,
+                      marginTop: 4,
+                    }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Footer */}
+          <button
+            onClick={() => { setOpen(false); router.push("/notifications"); }}
+            style={{
+              padding: "11px 14px",
+              borderTop: "1px solid var(--border)",
+              background: "transparent",
+              border: "none",
+              borderTop: "1px solid var(--border)",
+              color: "var(--nexio-indigo)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              width: "100%",
+              textAlign: "center",
+            }}
+          >
+            Alle Benachrichtigungen →
+          </button>
+        </div>
       )}
-    </>
+    </div>
   );
 }

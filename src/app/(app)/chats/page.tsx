@@ -4,6 +4,7 @@ import ConversationList from "@/components/chat/ConversationList";
 import type { ConversationWithMembers } from "@/types/database";
 import LookaroundButton from "@/components/LookaroundButton";
 import StoryBar from "@/components/chat/StoryBar";
+import ThemeToggle from "@/components/ThemeToggle";
 import NotificationBell from "@/components/notifications/NotificationBell";
 
 export default async function ChatsPage() {
@@ -71,8 +72,16 @@ export default async function ChatsPage() {
         <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>Chats</h1>
         <div className="flex gap-1 items-center">
           <LookaroundButton />
-          {/* Notification Bell */}
+          <ThemeToggle />
           <NotificationBell />
+          {/* Gespeicherte Nachrichten */}
+          <Link href="/saved"
+            className="w-9 h-9 flex items-center justify-center rounded-full"
+            style={{ color: "var(--foreground-3)" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+          </Link>
           {/* Search */}
           <Link href="/search"
             className="w-9 h-9 flex items-center justify-center rounded-full"

@@ -11,8 +11,6 @@ import { useTyping, formatTypingText } from "@/hooks/useTyping";
 import CallView from "@/components/calls/CallView";
 import UserActionsMenu from "@/components/UserActionsMenu";
 import { useE2E } from "@/lib/e2e/useE2E";
-import { useUserStatus } from "@/hooks/usePresence";
-import { formatDistanceToNow } from "date-fns";
 
 // ── Media Picker Sheet ────────────────────────────────────────────────────────
 function MediaPickerSheet({
@@ -535,6 +533,8 @@ function MsgContextMenu({
   onDelete,
   onReply,
   onEdit,
+  onSave,
+  isSaved,
 }: {
   msg: MessageWithSender;
   isOwn: boolean;
@@ -546,10 +546,13 @@ function MsgContextMenu({
   onDelete: () => void;
   onReply: () => void;
   onEdit: () => void;
+  onSave: () => void;
+  isSaved: boolean;
 }) {
   const items = [
     { label: "Antworten", icon: "↩️", action: onReply, danger: false },
     { label: "Kopieren", icon: "📋", action: onCopy, danger: false },
+    { label: isSaved ? "Gespeichert ✓" : "Speichern", icon: "🔖", action: onSave, danger: false },
     { label: "Weiterleiten", icon: "↪️", action: onForward, danger: false },
     { label: "Anpinnen", icon: "📌", action: onPin, danger: false },
     ...(isOwn && msg.type === "text" ? [{ label: "Bearbeiten", icon: "✏️", action: onEdit, danger: false }] : []),
@@ -976,6 +979,7 @@ export default function ChatView({
   const [isListening, setIsListening] = useState(false);
   const [pinnedMsg, setPinnedMsg] = useState<MessageWithSender | null>(null);
   const [contextMenu, setContextMenu] = useState<{ msg: MessageWithSender; y: number } | null>(null);
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
   const [forwardingMsg, setForwardingMsg] = useState<MessageWithSender | null>(null);
   const [forwardConvs, setForwardConvs] = useState<any[]>([]);
   const [replyingTo, setReplyingTo] = useState<MessageWithSender | null>(null);
@@ -1000,7 +1004,6 @@ export default function ChatView({
     ? conversation.members?.find((m: any) => m.user_id !== currentUserId)?.user_id ?? null
     : null;
   const e2e = useE2E(currentUserId, peerUserId);
-  const peerStatus = useUserStatus(peerUserId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
@@ -1119,6 +1122,22 @@ export default function ChatView({
     if (msg.sender_id !== currentUserId) return;
     await supabase.from("messages").update({ is_deleted: true, content: null }).eq("id", msg.id);
     setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, is_deleted: true, content: "Diese Nachricht wurde gelöscht." } : m));
+  }
+
+  async function handleSaveMessage(msg: MessageWithSender) {
+    const res = await fetch("/api/messages/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message_id: msg.id, conversation_id: conversation.id }),
+    });
+    if (res.ok) {
+      const { saved } = await res.json();
+      setSavedMessageIds((prev) => {
+        const next = new Set(prev);
+        if (saved) next.add(msg.id); else next.delete(msg.id);
+        return next;
+      });
+    }
   }
 
   async function handleForwardMessage(msg: MessageWithSender) {
@@ -1699,11 +1718,7 @@ export default function ChatView({
               {e2e.enabled && <span title="Ende-zu-Ende verschlüsselt">🔒</span>}
               {conversation.type === "group"
                 ? `👥 ${conversation.members?.length ?? 1} Mitglieder — tippen für Details`
-                : peerStatus?.status === "online"
-                  ? <span style={{ color: "var(--nexio-green)" }}>● Online</span>
-                  : peerStatus?.last_seen
-                  ? `Zuletzt gesehen ${formatDistanceToNow(new Date(peerStatus.last_seen), { addSuffix: true, locale: de })}`
-                  : e2e.enabled ? "Ende-zu-Ende verschlüsselt" : "Nexio Chat"
+                : e2e.enabled ? "Ende-zu-Ende verschlüsselt" : `${conversation.members?.length ?? 1} Mitglied${(conversation.members?.length ?? 1) !== 1 ? "er" : ""}`
               }
             </p>
           )}
@@ -2130,6 +2145,8 @@ export default function ChatView({
           onDelete={() => handleDeleteMessage(contextMenu.msg)}
           onReply={() => handleReply(contextMenu.msg)}
           onEdit={() => handleStartEdit(contextMenu.msg)}
+          onSave={() => handleSaveMessage(contextMenu.msg)}
+          isSaved={savedMessageIds.has(contextMenu.msg.id)}
         />
       )}
 

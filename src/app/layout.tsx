@@ -40,6 +40,8 @@ export default function RootLayout({
   return (
     <html lang="de" className={`${geist.variable} h-full`}>
       <head>
+        {/* Anti-FOUC: apply stored theme before first paint */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('nexio-theme');var r=document.documentElement;if(t==='light'){r.classList.add('light');}else if(t==='dark'){r.classList.add('dark');}else{if(!window.matchMedia('(prefers-color-scheme: dark)').matches)r.classList.add('light');}var fs=localStorage.getItem('nexio-fontsize');if(fs){var s={small:'14px',medium:'16px',large:'18px'};r.style.fontSize=s[fs]||'16px';}}catch(e){}})();` }} />
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png" />
         <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144.png" />
