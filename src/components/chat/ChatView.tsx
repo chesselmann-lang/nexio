@@ -63,21 +63,133 @@ function MediaPickerSheet({
   );
 }
 
-// ── Image Fullscreen Viewer ───────────────────────────────────────────────────
-function ImageViewer({ url, onClose }: { url: string; onClose: () => void }) {
+// ── Full-Screen Media Viewer (E4) ─────────────────────────────────────────────
+function MediaViewer({ url, mediaType, filename, onClose }: {
+  url: string;
+  mediaType: "image" | "video";
+  filename?: string;
+  onClose: () => void;
+}) {
+  const [scale, setScale] = useState(1);
+  const [translateY, setTranslateY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartY = useRef(0);
+
+  function handleWheel(e: React.WheelEvent) {
+    e.stopPropagation();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    setScale((s) => Math.max(1, Math.min(4, s + delta)));
+  }
+
+  function handlePointerDown(e: React.PointerEvent) {
+    if (scale > 1) return;
+    setIsDragging(true);
+    dragStartY.current = e.clientY;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
+  function handlePointerMove(e: React.PointerEvent) {
+    if (!isDragging || scale > 1) return;
+    const delta = e.clientY - dragStartY.current;
+    if (delta > 0) setTranslateY(delta);
+  }
+
+  function handlePointerUp() {
+    setIsDragging(false);
+    if (translateY > 90) {
+      onClose();
+    } else {
+      setTranslateY(0);
+    }
+  }
+
+  function handleDownload() {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename ?? (mediaType === "video" ? "nexio-video.mp4" : "nexio-image.jpg");
+    a.target = "_blank";
+    a.click();
+  }
+
+  const bgOpacity = Math.max(0, 0.92 - translateY / 200);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.92)" }}
-      onClick={onClose}
+      style={{ background: `rgba(0,0,0,${bgOpacity})`, touchAction: "none" }}
+      onClick={scale <= 1 ? onClose : undefined}
     >
-      <button className="absolute top-4 right-4 text-white text-3xl opacity-70">✕</button>
-      <img
-        src={url}
-        alt="Vollbild"
-        className="max-w-full max-h-full object-contain"
+      {/* Controls bar */}
+      <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-safe pb-3 z-10"
+        style={{ background: "linear-gradient(rgba(0,0,0,0.5),transparent)" }}>
+        <button
+          onClick={onClose}
+          className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(255,255,255,0.15)", color: "white" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); handleDownload(); }}
+          className="w-9 h-9 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(255,255,255,0.15)", color: "white" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Zoom pill */}
+      {scale > 1.05 && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1 rounded-full text-white text-xs"
+          style={{ background: "rgba(0,0,0,0.5)" }}>
+          {Math.round(scale * 100)}%
+        </div>
+      )}
+
+      {/* Media */}
+      <div
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
         onClick={(e) => e.stopPropagation()}
-      />
+        style={{
+          transform: `scale(${scale}) translateY(${translateY / scale}px)`,
+          transition: isDragging ? "none" : "transform 0.25s cubic-bezier(.34,1.56,.64,1)",
+          cursor: scale > 1 ? "grab" : "default",
+          userSelect: "none",
+        }}
+      >
+        {mediaType === "video" ? (
+          <video
+            src={url}
+            controls
+            autoPlay
+            className="rounded-xl shadow-2xl"
+            style={{ maxWidth: "90vw", maxHeight: "80vh" }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <img
+            src={url}
+            alt="Vollbild"
+            draggable={false}
+            className="rounded-xl shadow-2xl"
+            style={{ maxWidth: "90vw", maxHeight: "80vh", objectFit: "contain" }}
+          />
+        )}
+      </div>
+
+      {/* Swipe-down hint */}
+      {scale <= 1 && translateY > 30 && (
+        <p className="absolute bottom-10 left-1/2 -translate-x-1/2 text-white text-xs opacity-70">
+          Loslassen zum Schließen
+        </p>
+      )}
     </div>
   );
 }
@@ -251,33 +363,64 @@ function MessageBubble({
   onReact,
   onImageClick,
   onLongPress,
+  onSwipeReply,
   quotedMsg,
   isRead,
+  isSelected,
+  multiSelectMode,
+  onSelect,
 }: {
   msg: MessageWithSender;
   isOwn: boolean;
   showAvatar: boolean;
   currentUserId: string;
   onReact: (msgId: string, emoji: string) => void;
-  onImageClick: (url: string) => void;
+  onImageClick: (url: string, type?: "image" | "video") => void;
   onLongPress: (msg: MessageWithSender, y: number) => void;
+  onSwipeReply: (msg: MessageWithSender) => void;
   quotedMsg?: { content: string | null; senderName?: string } | null;
   isRead?: boolean;
   poll?: PollData | null;
   onVote?: (pollId: string, optionIdx: number) => void;
+  isSelected?: boolean;
+  multiSelectMode?: boolean;
+  onSelect?: (msg: MessageWithSender) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  const [swipeX, setSwipeX] = useState(0);
+  const swipeStartX = useRef(0);
+  const swipeDistX = useRef(0);
+  const swipeFired = useRef(false);
   const [imgDescription, setImgDescription] = useState<string | null>(null);
   const [descLoading, setDescLoading] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function handleTouchStart(e: React.TouchEvent) {
+    swipeStartX.current = e.touches[0].clientX;
+    swipeDistX.current = 0;
+    swipeFired.current = false;
     const touch = e.touches[0];
     const y = touch.clientY;
-    longPressTimer.current = setTimeout(() => onLongPress(msg, y), 500);
+    longPressTimer.current = setTimeout(() => {
+      if (swipeDistX.current < 12) onLongPress(msg, y);
+    }, 500);
+  }
+  function handleTouchMove(e: React.TouchEvent) {
+    const deltaX = e.touches[0].clientX - swipeStartX.current;
+    swipeDistX.current = Math.abs(deltaX);
+    if (deltaX > 6) {
+      if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+      setSwipeX(Math.min(deltaX, 72));
+    }
   }
   function handleTouchEnd() {
     if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+    if (swipeX > 40 && !swipeFired.current) {
+      swipeFired.current = true;
+      onSwipeReply(msg);
+      if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(25);
+    }
+    setSwipeX(0);
   }
 
   async function describeImage() {
@@ -296,7 +439,29 @@ function MessageBubble({
   }
 
   return (
-    <div className={`flex flex-col ${isOwn ? "items-end" : "items-start"} px-3 mb-1`}>
+    <div
+      className={`flex flex-col ${isOwn ? "items-end" : "items-start"} px-3 mb-1`}
+      onClick={multiSelectMode ? () => onSelect?.(msg) : undefined}
+      style={multiSelectMode ? { cursor: "pointer" } : undefined}
+    >
+      {/* Multi-select row wrapper */}
+      <div className={`flex items-center gap-2 w-full ${isOwn ? "flex-row-reverse" : ""}`}>
+        {/* Multi-select checkbox */}
+        {multiSelectMode && (
+          <div className="w-5 h-5 flex-none flex items-center justify-center rounded-full border-2"
+            style={{
+              borderColor: isSelected ? "var(--nexio-indigo)" : "var(--border)",
+              background: isSelected ? "var(--nexio-indigo)" : "transparent",
+              flexShrink: 0,
+            }}>
+            {isSelected && (
+              <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+                <polyline points="2,6 5,9 10,3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </div>
+        )}
+
       <div className={`flex items-end gap-2 w-full ${isOwn ? "flex-row-reverse" : ""}`}>
         {/* Avatar */}
         <div className="w-8 h-8 flex-none">
@@ -310,15 +475,36 @@ function MessageBubble({
           )}
         </div>
 
+        {/* Swipe wrapper — translates bubble + shows reply arrow */}
+        <div className="relative max-w-[72%] flex items-center gap-1"
+          style={{ transform: `translateX(${isOwn ? -swipeX : swipeX}px)`, transition: swipeX === 0 ? "transform 0.2s" : "none" }}>
+          {/* Reply arrow (appears on swipe) */}
+          {!isOwn && (
+            <div className="absolute -left-7 flex items-center justify-center w-6 h-6 rounded-full"
+              style={{ opacity: Math.min(swipeX / 40, 1), background: "var(--surface-2)", color: "var(--foreground-3)" }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+              </svg>
+            </div>
+          )}
+          {isOwn && (
+            <div className="absolute -right-7 flex items-center justify-center w-6 h-6 rounded-full"
+              style={{ opacity: Math.min(swipeX / 40, 1), background: "var(--surface-2)", color: "var(--foreground-3)" }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/>
+              </svg>
+            </div>
+          )}
+
         {/* Bubble + long-press reaction */}
-        <div className="relative max-w-[72%]">
+        <div className="relative max-w-full">
           <div
             className={`${isOwn ? "bubble-sent" : "bubble-received"} px-3 py-2 shadow-sm`}
-            onDoubleClick={() => setShowPicker((v) => !v)}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onTouchMove={handleTouchEnd}
-            onContextMenu={(e) => { e.preventDefault(); onLongPress(msg, e.clientY); }}
+            onDoubleClick={() => !multiSelectMode && setShowPicker((v) => !v)}
+            onTouchStart={multiSelectMode ? undefined : handleTouchStart}
+            onTouchMove={multiSelectMode ? undefined : handleTouchMove}
+            onTouchEnd={multiSelectMode ? undefined : handleTouchEnd}
+            onContextMenu={(e) => { e.preventDefault(); if (!multiSelectMode) onLongPress(msg, e.clientY); }}
           >
             {/* Quoted reply */}
             {quotedMsg && <QuotedMsg content={quotedMsg.content} senderName={quotedMsg.senderName} />}
@@ -363,11 +549,21 @@ function MessageBubble({
 
             {/* Video */}
             {msg.type === "video" && msg.media_url && (
-              <video
-                src={msg.media_url}
-                controls
-                className="rounded-lg max-w-full max-h-64"
-              />
+              <div className="relative cursor-pointer" onClick={() => onImageClick(msg.media_url!, "video")}>
+                <video
+                  src={msg.media_url}
+                  className="rounded-lg max-w-full max-h-64 pointer-events-none"
+                />
+                <div className="absolute inset-0 flex items-center justify-center rounded-lg"
+                  style={{ background: "rgba(0,0,0,0.25)" }}>
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center"
+                    style={{ background: "rgba(255,255,255,0.9)" }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#07c160">
+                      <polygon points="5 3 19 12 5 21 5 3"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Audio / Voice */}
@@ -468,7 +664,9 @@ function MessageBubble({
             </div>
           )}
         </div>
+        </div>{/* end swipe wrapper */}
       </div>
+    </div>{/* end checkbox wrapper */}
 
       {/* Reaction Bar below bubble */}
       {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -548,11 +746,13 @@ function MsgContextMenu({
   onEdit: () => void;
   onSave: () => void;
   isSaved: boolean;
+  onMultiSelect?: () => void;
 }) {
   const items = [
     { label: "Antworten", icon: "↩️", action: onReply, danger: false },
     { label: "Kopieren", icon: "📋", action: onCopy, danger: false },
     { label: isSaved ? "Gespeichert ✓" : "Speichern", icon: "🔖", action: onSave, danger: false },
+    { label: "Auswählen", icon: "☑️", action: onMultiSelect ?? (() => {}), danger: false },
     { label: "Weiterleiten", icon: "↪️", action: onForward, danger: false },
     { label: "Anpinnen", icon: "📌", action: onPin, danger: false },
     ...(isOwn && msg.type === "text" ? [{ label: "Bearbeiten", icon: "✏️", action: onEdit, danger: false }] : []),
@@ -971,6 +1171,12 @@ export default function ChatView({
   const [activeCall, setActiveCall] = useState<{ type: "audio" | "video"; roomName: string } | null>(null);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxType, setLightboxType] = useState<"image" | "video">("image");
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
+  const [linkPreview, setLinkPreview] = useState<{ url: string; title: string | null; description: string | null; image: string | null; siteName: string; hostname: string } | null>(null);
+  const [linkPreviewDismissed, setLinkPreviewDismissed] = useState(false);
+  const linkPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [decryptedContents, setDecryptedContents] = useState<Map<string, string>>(new Map());
@@ -1025,6 +1231,70 @@ export default function ChatView({
 
   useEffect(() => { scrollToBottom(false); }, []);
   useEffect(() => { scrollToBottom(true); }, [messages.length, typingUsers.length]);
+
+  // ── Draft restore on mount (E3) ───────────────────────────────────────────
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem(`nexio-draft-${conversation.id}`);
+      if (draft) setText(draft);
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id]);
+
+  // ── Link preview detection (E2) ──────────────────────────────────────────
+  useEffect(() => {
+    if (linkPreviewTimer.current) clearTimeout(linkPreviewTimer.current);
+    if (linkPreviewDismissed) return;
+    const urlMatch = text.match(/https?:\/\/[^\s]+/);
+    if (!urlMatch) { setLinkPreview(null); return; }
+    const detectedUrl = urlMatch[0];
+    linkPreviewTimer.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/link-preview?url=${encodeURIComponent(detectedUrl)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.title || data.description) setLinkPreview(data);
+        }
+      } catch { /* ignore */ }
+    }, 800);
+    return () => { if (linkPreviewTimer.current) clearTimeout(linkPreviewTimer.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  // ── Multi-select helpers (E5) ─────────────────────────────────────────────
+  function toggleMsgSelection(msg: MessageWithSender) {
+    setSelectedMsgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msg.id)) next.delete(msg.id); else next.add(msg.id);
+      return next;
+    });
+  }
+  function exitMultiSelect() {
+    setMultiSelectMode(false);
+    setSelectedMsgIds(new Set());
+  }
+  async function multiSelectForward() {
+    if (selectedMsgIds.size === 0) return;
+    const msgsToForward = messages.filter((m) => selectedMsgIds.has(m.id));
+    // Forward first selected msg; open forward sheet
+    if (msgsToForward[0]) { await handleForwardMessage(msgsToForward[0]); }
+    exitMultiSelect();
+  }
+  async function multiSelectDelete() {
+    for (const msgId of selectedMsgIds) {
+      const msg = messages.find((m) => m.id === msgId);
+      if (msg && msg.sender_id === currentUserId) await handleDeleteMessage(msg);
+    }
+    exitMultiSelect();
+  }
+  function multiSelectCopy() {
+    const texts = messages
+      .filter((m) => selectedMsgIds.has(m.id) && m.content)
+      .map((m) => m.content!)
+      .join("\n");
+    navigator.clipboard?.writeText(texts).catch(() => {});
+    exitMultiSelect();
+  }
 
   // Realtime subscription for new messages + reaction updates
   useEffect(() => {
@@ -1479,6 +1749,9 @@ export default function ChatView({
     const plainContent = text.trim();
     const replyId = replyingTo?.id ?? null;
     setText("");
+    try { localStorage.removeItem(`nexio-draft-${conversation.id}`); } catch { /* ignore */ }
+    setLinkPreview(null);
+    setLinkPreviewDismissed(false);
     clearTyping();
     setReplyingTo(null);
     setSending(true);
@@ -1926,12 +2199,16 @@ export default function ChatView({
                 showAvatar={idx === 0 || messages[idx - 1].sender_id !== msg.sender_id}
                 currentUserId={currentUserId}
                 onReact={handleReact}
-                onImageClick={setLightboxUrl}
-                onLongPress={(m, y) => setContextMenu({ msg: m, y })}
+                onImageClick={(url, type) => { setLightboxType(type ?? "image"); setLightboxUrl(url); }}
+                onLongPress={(m, y) => { if (!multiSelectMode) setContextMenu({ msg: m, y }); }}
+                onSwipeReply={handleReply}
                 quotedMsg={quotedMsg}
                 isRead={readMsgIds.has(msg.id)}
                 poll={msg.type === "poll" ? polls.get(msg.id) ?? null : null}
                 onVote={handleVote}
+                isSelected={selectedMsgIds.has(msg.id)}
+                multiSelectMode={multiSelectMode}
+                onSelect={toggleMsgSelection}
               />
             </div>
           </div>
@@ -1955,6 +2232,35 @@ export default function ChatView({
       ) : (
         /* Input Bar */
         <div className="flex-none" style={{ background: "var(--surface)" }}>
+          {/* Link Preview Card (E2) */}
+          {linkPreview && !linkPreviewDismissed && (
+            <div className="flex items-start gap-3 px-3 py-2.5 border-t"
+              style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}>
+              {linkPreview.image && (
+                <img src={linkPreview.image} alt="" className="w-12 h-12 rounded-lg object-cover flex-none" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-semibold" style={{ color: "var(--nexio-indigo)" }}>
+                  🔗 {linkPreview.siteName ?? linkPreview.hostname}
+                </p>
+                {linkPreview.title && (
+                  <p className="text-xs font-medium truncate" style={{ color: "var(--foreground)" }}>
+                    {linkPreview.title}
+                  </p>
+                )}
+                {linkPreview.description && (
+                  <p className="text-[10px] line-clamp-2" style={{ color: "var(--foreground-3)" }}>
+                    {linkPreview.description}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => { setLinkPreview(null); setLinkPreviewDismissed(true); }}
+                className="flex-none text-sm leading-none mt-0.5"
+                style={{ color: "var(--foreground-3)" }}>✕</button>
+            </div>
+          )}
+
           {/* Reply Preview */}
           {replyingTo && (
             <ReplyPreviewBar msg={replyingTo} onCancel={() => setReplyingTo(null)} />
@@ -2007,6 +2313,7 @@ export default function ChatView({
                 } else {
                   setText(e.target.value);
                   if (e.target.value.trim()) sendTyping();
+                  try { localStorage.setItem(`nexio-draft-${conversation.id}`, e.target.value); } catch { /* ignore */ }
                 }
                 e.target.style.height = "auto";
                 e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
@@ -2109,7 +2416,7 @@ export default function ChatView({
 
       {/* Image Lightbox */}
       {lightboxUrl && (
-        <ImageViewer url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
+        <MediaViewer url={lightboxUrl} mediaType={lightboxType} onClose={() => setLightboxUrl(null)} />
       )}
 
       {/* Group Info Sheet */}
@@ -2147,7 +2454,55 @@ export default function ChatView({
           onEdit={() => handleStartEdit(contextMenu.msg)}
           onSave={() => handleSaveMessage(contextMenu.msg)}
           isSaved={savedMessageIds.has(contextMenu.msg.id)}
+          onMultiSelect={() => { setMultiSelectMode(true); toggleMsgSelection(contextMenu.msg); }}
         />
+      )}
+
+      {/* Multi-Select Action Bar (E5) */}
+      {multiSelectMode && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-3 pb-safe border-t"
+          style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+        >
+          <button onClick={exitMultiSelect} className="text-sm font-medium px-3 py-2 rounded-xl"
+            style={{ color: "var(--foreground-3)", background: "var(--surface-2)" }}>
+            Abbrechen
+          </button>
+          <span className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+            {selectedMsgIds.size} ausgewählt
+          </span>
+          <div className="flex items-center gap-2">
+            {/* Copy text */}
+            <button onClick={multiSelectCopy}
+              className="w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ background: "var(--surface-2)", color: "var(--foreground-2)" }}
+              title="Kopieren">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            </button>
+            {/* Forward */}
+            <button onClick={multiSelectForward}
+              className="w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ background: "var(--surface-2)", color: "var(--foreground-2)" }}
+              title="Weiterleiten">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/>
+              </svg>
+            </button>
+            {/* Delete own */}
+            {[...selectedMsgIds].every((id) => messages.find((m) => m.id === id)?.sender_id === currentUserId) && (
+              <button onClick={multiSelectDelete}
+                className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: "#ef444415", color: "#ef4444" }}
+                title="Löschen">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Forward Sheet */}
