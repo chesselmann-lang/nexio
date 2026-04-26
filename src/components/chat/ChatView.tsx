@@ -421,15 +421,34 @@ function MessageBubble({
                 {format(new Date(msg.created_at), "HH:mm")}
               </span>
               {isOwn && (
+                /* Single tick = sent, double tick grey = delivered, double tick green = read */
                 <svg
-                  width="14"
-                  height="8"
-                  viewBox="0 0 18 10"
+                  width="16"
+                  height="9"
+                  viewBox="0 0 20 10"
                   fill="none"
-                  style={{ color: isRead ? "#07c160" : "currentColor", opacity: isRead ? 1 : 0.6 }}
+                  style={{ flexShrink: 0 }}
+                  aria-label={isRead ? "Gelesen" : "Gesendet"}
                 >
-                  <path d="M1 5l4 4 8-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M6 5l4 4 8-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  {/* First tick always visible */}
+                  <path
+                    d={isRead ? "M1 5l4 4 8-8" : "M4 5l4 4 8-8"}
+                    stroke={isRead ? "#07c160" : "currentColor"}
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={isRead ? 1 : 0.55}
+                  />
+                  {/* Second tick only for read receipts (double tick = read by peer) */}
+                  {isRead && (
+                    <path
+                      d="M6 5l4 4 8-8"
+                      stroke="#07c160"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
                 </svg>
               )}
             </div>
@@ -1146,13 +1165,32 @@ export default function ChatView({
     return () => observer.disconnect();
   }, [messages.length]);
 
-  // Subscribe to message_reads to update blue ticks on own messages
+  // Initial load: which of my sent messages have already been read by others?
+  useEffect(() => {
+    const myMsgIds = messages
+      .filter((m) => m.sender_id === currentUserId && !m.id.startsWith("tmp-"))
+      .map((m) => m.id);
+    if (myMsgIds.length === 0) return;
+    supabase
+      .from("message_reads")
+      .select("message_id")
+      .in("message_id", myMsgIds)
+      .neq("user_id", currentUserId)
+      .then(({ data }) => {
+        if (!data?.length) return;
+        setReadMsgIds(new Set(data.map((r) => r.message_id)));
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id]); // run once on mount
+
+  // Subscribe to message_reads to update blue ticks on own messages in real-time
   useEffect(() => {
     const channel = supabase
       .channel(`reads:${conversation.id}`)
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "message_reads",
       }, (payload) => {
+        // Only flip ticks for reads by OTHER users on MY messages
         if (payload.new.user_id !== currentUserId) {
           setReadMsgIds((prev) => new Set([...prev, payload.new.message_id]));
         }
@@ -1480,6 +1518,24 @@ export default function ChatView({
           next.set(data.id, plainContent);
           return next;
         });
+      }
+      // Fire-and-forget push delivery to all other members
+      const otherMembers = (conversation.members ?? [])
+        .filter((m: any) => m.user_id !== currentUserId)
+        .map((m: any) => m.user_id as string);
+      if (otherMembers.length > 0) {
+        const senderName = currentDisplayName ?? "Jemand";
+        const convName = conversation.type === "group" ? ` in ${name}` : "";
+        fetch("/api/push/deliver", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userIds: otherMembers,
+            title: `${senderName}${convName}`,
+            body: isE2E ? "🔒 Verschlüsselte Nachricht" : plainContent.slice(0, 120),
+            data: { conversation_id: conversation.id, type: "message" },
+          }),
+        }).catch(() => {/* non-critical */});
       }
     }
     setSending(false);

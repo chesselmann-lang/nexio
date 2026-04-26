@@ -41,7 +41,8 @@
     "@livekit/components-styles": "^1.1.2",
     "livekit-client": "^2.6.0",
     "@stripe/stripe-js": "^4.8.0",
-    "@stripe/react-stripe-js": "^2.8.0"
+    "@stripe/react-stripe-js": "^2.8.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -53,6 +54,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "@types/qrcode": "^1.5.5",
+    "@types/web-push": "^3.6.3",
     "sharp": "^0.33.5"
   }
 }
