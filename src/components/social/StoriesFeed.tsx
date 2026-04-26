@@ -18,6 +18,7 @@ interface Story {
   privacy?: string;
   location_name?: string;
   created_at: string;
+  is_nsfw?: boolean;
   author?: { id: string; display_name: string; avatar_url: string | null; username: string };
 }
 
@@ -106,8 +107,10 @@ function ViewersModal({ storyId, onClose }: { storyId: string; onClose: () => vo
   );
 }
 
-function StoryCard({ story, currentUserId, onReport }: {
-  story: Story; currentUserId: string; onReport: (id: string) => void;
+function StoryCard({ story, currentUserId, onReport, onDelete }: {
+  story: Story; currentUserId: string;
+  onReport: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const supabase = createClient();
   const [likes, setLikes] = useState<string[]>(story.likes ?? []);
@@ -119,8 +122,20 @@ function StoryCard({ story, currentUserId, onReport }: {
   const [showOptions, setShowOptions] = useState(false);
   const [showViewers, setShowViewers] = useState(false);
   const [viewCount, setViewCount] = useState<number>(story.views?.length ?? 0);
+  const [deleted, setDeleted] = useState(false);
+  const [nsfwRevealed, setNsfwRevealed] = useState(false);
   const hasLiked = likes.includes(currentUserId);
   const isOwn = story.author_id === currentUserId;
+  const showNsfwWall = (story.is_nsfw && !nsfwRevealed && !isOwn);
+
+  async function handleDelete() {
+    setShowOptions(false);
+    await supabase.from("stories").delete().eq("id", story.id);
+    setDeleted(true);
+    onDelete(story.id);
+  }
+
+  if (deleted) return null;
 
   // Track view + load accurate count from story_views table
   useEffect(() => {
@@ -226,8 +241,9 @@ function StoryCard({ story, currentUserId, onReport }: {
             <div className="absolute right-0 top-6 z-20 rounded-xl shadow-lg border overflow-hidden min-w-[140px]"
               style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
               {isOwn ? (
-                <button className="w-full px-4 py-2.5 text-sm text-left text-red-500 hover:bg-red-50">
-                  Löschen
+                <button onClick={handleDelete}
+                  className="w-full px-4 py-2.5 text-sm text-left text-red-500">
+                  🗑 Löschen
                 </button>
               ) : (
                 <>
@@ -245,21 +261,47 @@ function StoryCard({ story, currentUserId, onReport }: {
         </div>
       </div>
 
-      {/* Media */}
-      {story.media_url && story.media_type?.startsWith("image") && (
-        <img src={story.media_url} alt="Moment" className="w-full max-h-[480px] object-cover" />
-      )}
-      {story.media_url && story.media_type?.startsWith("video") && (
-        <video src={story.media_url} controls className="w-full max-h-[480px] object-cover" />
-      )}
-
-      {/* Text */}
-      {story.content && (
-        <div className="px-4 py-3">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "var(--foreground)" }}>
-            {story.content}
-          </p>
+      {/* NSFW warning wall */}
+      {showNsfwWall ? (
+        <div className="relative w-full flex flex-col items-center justify-center py-12 gap-4"
+          style={{ background: "var(--surface)" }}>
+          <div className="w-16 h-16 rounded-full flex items-center justify-center text-3xl"
+            style={{ background: "#ef444420" }}>⚠️</div>
+          <div className="text-center px-8">
+            <p className="font-bold text-sm mb-1" style={{ color: "var(--foreground)" }}>
+              Möglicherweise unangemessener Inhalt
+            </p>
+            <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
+              Dieser Inhalt wurde als jugendunangemessen markiert.
+            </p>
+          </div>
+          <button
+            onClick={() => setNsfwRevealed(true)}
+            className="px-5 py-2.5 rounded-2xl text-sm font-semibold border"
+            style={{ borderColor: "var(--border)", color: "var(--foreground-2)" }}
+          >
+            Trotzdem anzeigen
+          </button>
         </div>
+      ) : (
+        <>
+          {/* Media */}
+          {story.media_url && story.media_type?.startsWith("image") && (
+            <img src={story.media_url} alt="Moment" className="w-full max-h-[480px] object-cover" />
+          )}
+          {story.media_url && story.media_type?.startsWith("video") && (
+            <video src={story.media_url} controls className="w-full max-h-[480px] object-cover" />
+          )}
+
+          {/* Text */}
+          {story.content && (
+            <div className="px-4 py-3">
+              <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "var(--foreground)" }}>
+                {story.content}
+              </p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Actions */}
@@ -560,7 +602,8 @@ export default function StoriesFeed({ initialStories, currentUserId }: {
           <div className="flex flex-col gap-3 p-3">
             {stories.map(s => (
               <StoryCard key={s.id} story={s} currentUserId={currentUserId}
-                onReport={setReportTarget} />
+                onReport={setReportTarget}
+                onDelete={id => setStories(prev => prev.filter(x => x.id !== id))} />
             ))}
           </div>
         )}

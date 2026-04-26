@@ -277,6 +277,59 @@ export default async function AdminPage() {
           </div>
         </section>
 
+        {/* LiveKit Setup Wizard */}
+        {!process.env.LIVEKIT_API_KEY && (
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2"
+              style={{ color: "var(--foreground-3)" }}>
+              📞 LiveKit einrichten
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                style={{ background: "#f59e0b20", color: "#f59e0b" }}>Anrufe deaktiviert</span>
+            </h2>
+            <div className="rounded-2xl overflow-hidden" style={{ background: "var(--surface)" }}>
+              <div className="px-4 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+                <p className="text-sm font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+                  Schritt 1 — Kostenloses LiveKit-Konto erstellen
+                </p>
+                <p className="text-xs mb-3" style={{ color: "var(--foreground-3)" }}>
+                  LiveKit bietet einen kostenlosen Free-Tier (10.000 Minuten/Monat — ausreichend für Tests und kleine Communities).
+                </p>
+                <a
+                  href="https://cloud.livekit.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
+                  style={{ background: "#0ea5e9" }}>
+                  → cloud.livekit.io öffnen
+                </a>
+              </div>
+              <div className="px-4 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+                <p className="text-sm font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+                  Schritt 2 — API-Keys erstellen
+                </p>
+                <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
+                  Im Dashboard: Projekt anlegen → Settings → Keys → "New API Key". Du erhältst 3 Werte:
+                </p>
+                <div className="mt-2 rounded-xl px-3 py-2 font-mono text-xs space-y-1"
+                  style={{ background: "var(--background)", color: "var(--foreground-2)" }}>
+                  <p>LIVEKIT_API_KEY=APIxxxxxxxx</p>
+                  <p>LIVEKIT_API_SECRET=xxxxxx…</p>
+                  <p>NEXT_PUBLIC_LIVEKIT_URL=wss://xxxxx.livekit.cloud</p>
+                </div>
+              </div>
+              <div className="px-4 py-4">
+                <p className="text-sm font-semibold mb-1" style={{ color: "var(--foreground)" }}>
+                  Schritt 3 — In Vercel eintragen
+                </p>
+                <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
+                  Vercel Dashboard → Dein Projekt → Settings → Environment Variables → alle 3 Werte eintragen → Redeploy.
+                  Danach erscheint LiveKit hier als <strong style={{ color: "#07c160" }}>Aktiv</strong>.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Deployment Info */}
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--foreground-3)" }}>Deployment</h2>

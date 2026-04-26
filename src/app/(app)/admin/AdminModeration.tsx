@@ -1,14 +1,27 @@
 "use client";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 const REASON_LABELS: Record<string, string> = {
-  spam: "Spam", harassment: "Belästigung", fake_account: "Gefälschtes Konto",
-  inappropriate_content: "Unangemessene Inhalte", scam: "Betrug", other: "Sonstiges",
+  spam: "Spam",
+  harassment: "Belästigung",
+  fake_account: "Gefälschtes Konto",
+  inappropriate_content: "Unangemessene Inhalte",
+  youth_harmful: "⚠️ Jugendgefährdend",
+  hate_speech: "Hassrede",
+  misinformation: "Falschinformation",
+  illegal: "Illegaler Inhalt",
+  scam: "Betrug",
+  other: "Sonstiges",
 };
 
+const NSFW_REASONS = new Set(["inappropriate_content", "youth_harmful", "hate_speech", "illegal"]);
+
 export function ModerationQueue({ reports: initialReports }: { reports: any[] }) {
+  const supabase = createClient();
   const [reports, setReports] = useState(initialReports);
   const [loading, setLoading] = useState<string | null>(null);
+  const [nsfwFlagging, setNsfwFlagging] = useState<string | null>(null);
 
   async function act(reportId: string, action: "reviewed" | "dismissed") {
     setLoading(reportId);
@@ -19,6 +32,23 @@ export function ModerationQueue({ reports: initialReports }: { reports: any[] })
     });
     if (res.ok) setReports((r) => r.filter((x) => x.id !== reportId));
     setLoading(null);
+  }
+
+  async function flagNsfw(r: any) {
+    setNsfwFlagging(r.id);
+    const table = r.target_type === "story" ? "stories" : "messages";
+    await supabase
+      .from(table)
+      .update({ is_nsfw: true })
+      .eq("id", r.target_id);
+    // Also mark the report as reviewed
+    await fetch("/api/admin/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: r.id, action: "reviewed" }),
+    });
+    setReports((prev) => prev.filter((x) => x.id !== r.id));
+    setNsfwFlagging(null);
   }
 
   if (reports.length === 0) {
@@ -32,39 +62,59 @@ export function ModerationQueue({ reports: initialReports }: { reports: any[] })
 
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: "var(--surface)" }}>
-      {reports.map((r: any, i: number) => (
-        <div key={r.id} className="px-4 py-3" style={{ borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
-          <div className="flex items-start gap-2 mb-2">
-            <span className="text-sm font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: "#fee2e2", color: "#ef4444", fontSize: 11 }}>
-              {REASON_LABELS[r.reason] ?? r.reason}
-            </span>
-            <span className="text-xs ml-auto" style={{ color: "var(--foreground-3)" }}>
-              {new Date(r.created_at).toLocaleDateString("de-DE")}
-            </span>
-          </div>
-          <p className="text-xs mb-1" style={{ color: "var(--foreground-3)" }}>
-            Gemeldet: {r.target_type}/{r.target_id?.slice(0, 8)}
-          </p>
-          {r.reporter && (
-            <p className="text-xs mb-2" style={{ color: "var(--foreground-3)" }}>
-              Von: @{r.reporter?.username ?? "—"}
+      {reports.map((r: any, i: number) => {
+        const canNsfw = (r.target_type === "story" || r.target_type === "message") &&
+          NSFW_REASONS.has(r.reason);
+        return (
+          <div key={r.id} className="px-4 py-3" style={{ borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
+            <div className="flex items-start gap-2 mb-2">
+              <span className="text-sm font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: "#fee2e2", color: "#ef4444", fontSize: 11 }}>
+                {REASON_LABELS[r.reason] ?? r.reason}
+              </span>
+              <span className="text-xs capitalize px-2 py-0.5 rounded-full"
+                style={{ background: "var(--background)", color: "var(--foreground-3)", fontSize: 11 }}>
+                {r.target_type}
+              </span>
+              <span className="text-xs ml-auto" style={{ color: "var(--foreground-3)" }}>
+                {new Date(r.created_at).toLocaleDateString("de-DE")}
+              </span>
+            </div>
+            <p className="text-xs mb-1 font-mono" style={{ color: "var(--foreground-3)" }}>
+              ID: {r.target_id?.slice(0, 12)}…
             </p>
-          )}
-          <div className="flex gap-2">
-            <button onClick={() => act(r.id, "reviewed")} disabled={loading === r.id}
-              className="flex-1 py-1.5 rounded-xl text-xs font-semibold text-white"
-              style={{ background: "#07c160" }}>
-              {loading === r.id ? "…" : "✓ Verarbeitet"}
-            </button>
-            <button onClick={() => act(r.id, "dismissed")} disabled={loading === r.id}
-              className="flex-1 py-1.5 rounded-xl text-xs font-semibold"
-              style={{ background: "var(--surface-2)", color: "var(--foreground-3)" }}>
-              Ablehnen
-            </button>
+            {r.reporter && (
+              <p className="text-xs mb-2" style={{ color: "var(--foreground-3)" }}>
+                Melder: @{r.reporter?.username ?? "—"}
+              </p>
+            )}
+            {r.description && (
+              <p className="text-xs mb-2 italic" style={{ color: "var(--foreground-2)" }}>
+                "{r.description}"
+              </p>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              {canNsfw && (
+                <button onClick={() => flagNsfw(r)} disabled={nsfwFlagging === r.id}
+                  className="flex-1 py-1.5 rounded-xl text-xs font-semibold"
+                  style={{ background: "#f59e0b20", color: "#f59e0b", border: "1px solid #f59e0b40" }}>
+                  {nsfwFlagging === r.id ? "…" : "🔞 NSFW markieren"}
+                </button>
+              )}
+              <button onClick={() => act(r.id, "reviewed")} disabled={loading === r.id}
+                className="flex-1 py-1.5 rounded-xl text-xs font-semibold text-white"
+                style={{ background: "#07c160" }}>
+                {loading === r.id ? "…" : "✓ Erledigt"}
+              </button>
+              <button onClick={() => act(r.id, "dismissed")} disabled={loading === r.id}
+                className="flex-1 py-1.5 rounded-xl text-xs font-semibold"
+                style={{ background: "var(--background)", color: "var(--foreground-3)" }}>
+                Ablehnen
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

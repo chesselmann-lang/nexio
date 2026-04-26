@@ -966,6 +966,9 @@ export default function ChatView({
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchIdx, setSearchIdx] = useState(0);
+  // Mute state (loaded from conversation membership)
+  const myMembership = conversation.members?.find((m: any) => m.user_id === currentUserId);
+  const [isMuted, setIsMuted] = useState<boolean>((myMembership as any)?.is_muted ?? false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const msgItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const speechRef = useRef<any>(null);
@@ -1683,6 +1686,22 @@ export default function ChatView({
           {summarizing
             ? <span className="text-sm animate-spin">⏳</span>
             : <span className="text-sm">✨</span>}
+        </button>
+        {/* Mute toggle */}
+        <button
+          onClick={async () => {
+            const next = !isMuted;
+            setIsMuted(next);
+            await supabase.from("conversation_members")
+              .update({ is_muted: next })
+              .eq("conversation_id", conversation.id)
+              .eq("user_id", currentUserId);
+          }}
+          className="w-8 h-8 flex items-center justify-center rounded-full"
+          style={{ color: isMuted ? "var(--nexio-green)" : "var(--foreground-2)" }}
+          title={isMuted ? "Stummschaltung aufheben" : "Stumm schalten"}
+        >
+          <span className="text-sm">{isMuted ? "🔕" : "🔔"}</span>
         </button>
         {/* Block/Report (only for direct chats) */}
         {conversation.type === "direct" && (() => {

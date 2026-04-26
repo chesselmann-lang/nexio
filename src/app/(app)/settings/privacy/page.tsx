@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
 type Factor = { id: string; friendly_name?: string; status: string };
 
@@ -18,10 +19,40 @@ export default function PrivacySettingsPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [step, setStep] = useState<"idle" | "scan" | "verify">("idle");
+  const [youthProtection, setYouthProtection] = useState(false);
+  const [birthYear, setBirthYear] = useState<string>("");
+  const [savingYouth, setSavingYouth] = useState(false);
 
   useEffect(() => {
     loadFactors();
+    loadYouthSettings();
   }, []);
+
+  async function loadYouthSettings() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data } = await supabase
+      .from("users")
+      .select("youth_protection, birth_year")
+      .eq("id", user.id)
+      .single();
+    if (data) {
+      setYouthProtection(data.youth_protection ?? false);
+      setBirthYear(data.birth_year ? String(data.birth_year) : "");
+    }
+  }
+
+  async function saveYouthSettings(enabled: boolean) {
+    setSavingYouth(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("users").update({
+      youth_protection: enabled,
+      birth_year: birthYear ? parseInt(birthYear) : null,
+    }).eq("id", user.id);
+    setYouthProtection(enabled);
+    setSavingYouth(false);
+  }
 
   async function loadFactors() {
     const { data } = await supabase.auth.mfa.listFactors();
@@ -244,6 +275,70 @@ export default function PrivacySettingsPage() {
               <path d="M9 18l6-6-6-6" />
             </svg>
           </button>
+        </section>
+
+        {/* Jugendschutz */}
+        <section>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-2 px-1"
+            style={{ color: "var(--foreground-3)" }}>Jugendschutz</p>
+          <div className="rounded-2xl overflow-hidden" style={{ background: "var(--surface)" }}>
+            {/* Toggle */}
+            <div className="flex items-center justify-between px-4 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
+                  style={{ background: youthProtection ? "#07c16020" : "var(--background)" }}>
+                  🛡️
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>
+                    Jugendschutzfilter aktiv
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--foreground-3)" }}>
+                    Blendet als jugendunangemessen markierte Inhalte aus
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => saveYouthSettings(!youthProtection)}
+                disabled={savingYouth}
+                className="w-11 h-6 rounded-full transition-colors flex items-center px-0.5 flex-none"
+                style={{ background: youthProtection ? "var(--nexio-green)" : "var(--border)" }}
+              >
+                <div className="w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  style={{ transform: youthProtection ? "translateX(20px)" : "translateX(0)" }} />
+              </button>
+            </div>
+            {/* Birth year */}
+            <div className="flex items-center gap-3 px-4 py-4 border-b" style={{ borderColor: "var(--border)" }}>
+              <span className="text-xl">🎂</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold" style={{ color: "var(--foreground)" }}>Geburtsjahr</p>
+                <p className="text-xs" style={{ color: "var(--foreground-3)" }}>Optional — hilft bei altersbezogenen Empfehlungen</p>
+              </div>
+              <input
+                type="number"
+                min="1900"
+                max={new Date().getFullYear()}
+                value={birthYear}
+                onChange={e => setBirthYear(e.target.value)}
+                onBlur={() => saveYouthSettings(youthProtection)}
+                placeholder="z.B. 1995"
+                className="w-20 text-right bg-transparent text-sm border-b focus:outline-none"
+                style={{ color: "var(--foreground)", borderColor: "var(--border)" }}
+              />
+            </div>
+            {/* Info link */}
+            <Link href="/jugendschutz"
+              className="flex items-center gap-3 px-4 py-3.5 text-left"
+              style={{ color: "var(--foreground)" }}>
+              <span className="text-xl">📋</span>
+              <span className="flex-1 text-sm font-medium">Jugendschutzrichtlinien lesen</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                style={{ color: "var(--foreground-3)" }}>
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </Link>
+          </div>
         </section>
 
         {/* Blocked users */}
