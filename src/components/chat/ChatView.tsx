@@ -11,6 +11,8 @@ import { useTyping, formatTypingText } from "@/hooks/useTyping";
 import CallView from "@/components/calls/CallView";
 import UserActionsMenu from "@/components/UserActionsMenu";
 import { useE2E } from "@/lib/e2e/useE2E";
+import { useUserStatus } from "@/hooks/usePresence";
+import { formatDistanceToNow } from "date-fns";
 
 // ── Media Picker Sheet ────────────────────────────────────────────────────────
 function MediaPickerSheet({
@@ -998,6 +1000,7 @@ export default function ChatView({
     ? conversation.members?.find((m: any) => m.user_id !== currentUserId)?.user_id ?? null
     : null;
   const e2e = useE2E(currentUserId, peerUserId);
+  const peerStatus = useUserStatus(peerUserId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
@@ -1696,7 +1699,11 @@ export default function ChatView({
               {e2e.enabled && <span title="Ende-zu-Ende verschlüsselt">🔒</span>}
               {conversation.type === "group"
                 ? `👥 ${conversation.members?.length ?? 1} Mitglieder — tippen für Details`
-                : e2e.enabled ? "Ende-zu-Ende verschlüsselt" : `${conversation.members?.length ?? 1} Mitglied${(conversation.members?.length ?? 1) !== 1 ? "er" : ""}`
+                : peerStatus?.status === "online"
+                  ? <span style={{ color: "var(--nexio-green)" }}>● Online</span>
+                  : peerStatus?.last_seen
+                  ? `Zuletzt gesehen ${formatDistanceToNow(new Date(peerStatus.last_seen), { addSuffix: true, locale: de })}`
+                  : e2e.enabled ? "Ende-zu-Ende verschlüsselt" : "Nexio Chat"
               }
             </p>
           )}

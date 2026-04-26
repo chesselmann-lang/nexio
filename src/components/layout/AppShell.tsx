@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@/types/database";
@@ -86,6 +86,45 @@ export default function AppShell({
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
+  // ── Presence: broadcast own online status ─────────────────────────────────
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const userId = profile.id;
+
+    // Mark online immediately
+    supabase.from("users")
+      .update({ status: "online", last_seen: new Date().toISOString() })
+      .eq("id", userId).then(() => {});
+
+    // Toggle away/online on visibility change
+    const onVisibility = () => {
+      const status = document.hidden ? "away" : "online";
+      supabase.from("users")
+        .update({ status, last_seen: new Date().toISOString() })
+        .eq("id", userId).then(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    // Heartbeat every 60s
+    const hb = setInterval(() => {
+      if (!document.hidden) {
+        supabase.from("users")
+          .update({ last_seen: new Date().toISOString() })
+          .eq("id", userId).then(() => {});
+      }
+    }, 60_000);
+
+    return () => {
+      clearInterval(hb);
+      document.removeEventListener("visibilitychange", onVisibility);
+      supabase.from("users")
+        .update({ status: "offline", last_seen: new Date().toISOString() })
+        .eq("id", userId).then(() => {});
+    };
+  }, [profile?.id]);
+
+  // ── Notification badge ─────────────────────────────────────────────────────
   useEffect(() => {
     supabase
       .from("notifications")

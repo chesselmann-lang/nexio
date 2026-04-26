@@ -4,6 +4,7 @@ import ConversationList from "@/components/chat/ConversationList";
 import type { ConversationWithMembers } from "@/types/database";
 import LookaroundButton from "@/components/LookaroundButton";
 import StoryBar from "@/components/chat/StoryBar";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 export default async function ChatsPage() {
   const supabase = await createClient();
@@ -29,6 +30,7 @@ export default async function ChatsPage() {
     .filter(Boolean)
     .filter((c) => !c.is_archived);
 
+
   // Fetch contacts who have active stories in last 24h
   const { data: storyData } = await supabase
     .from("stories")
@@ -36,6 +38,7 @@ export default async function ChatsPage() {
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false });
 
+  // Build story user list: own entry first, then others
   const storyUserMap = new Map<string, { id: string; display_name: string; avatar_url: string | null; seen: boolean; isOwn?: boolean }>();
   (storyData ?? []).forEach((s: any) => {
     const u = s.users;
@@ -48,7 +51,7 @@ export default async function ChatsPage() {
       isOwn: u.id === user!.id,
     });
   });
-
+  // Always prepend current user as "add story" entry
   const storyUsers = [
     { id: user!.id, display_name: "Meine Story", avatar_url: null, hasStory: storyUserMap.has(user!.id), seen: false, isOwn: true },
     ...[...storyUserMap.values()].filter(u => u.id !== user!.id).map(u => ({ ...u, hasStory: true })),
@@ -66,8 +69,11 @@ export default async function ChatsPage() {
         }}
       >
         <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>Chats</h1>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-1 items-center">
           <LookaroundButton />
+          {/* Notification Bell */}
+          <NotificationBell />
+          {/* Search */}
           <Link href="/search"
             className="w-9 h-9 flex items-center justify-center rounded-full"
             style={{ color: "var(--foreground-3)" }}>
@@ -75,6 +81,7 @@ export default async function ChatsPage() {
               <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
             </svg>
           </Link>
+          {/* Neuer Chat → /chats/new */}
           <Link href="/chats/new"
             className="w-9 h-9 flex items-center justify-center rounded-full"
             style={{ color: "var(--nexio-indigo)" }}>

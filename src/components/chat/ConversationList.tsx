@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { de } from "date-fns/locale";
 import { createClient } from "@/lib/supabase/client";
@@ -24,14 +24,27 @@ function getAvatar(conv: ConversationWithMembers, currentUserId: string): string
   return null;
 }
 
+function getOtherUserId(conv: ConversationWithMembers, currentUserId: string): string | null {
+  if (conv.type !== "direct") return null;
+  const other = conv.members?.find((m) => m.user_id !== currentUserId);
+  return other?.user_id ?? null;
+}
+
 const AVATAR_COLORS = ["#7c5cfc", "#07c160", "#1677ff", "#f59e0b", "#ef4444", "#8b5cf6"];
 function avatarColor(name: string) {
   return AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
 }
 
+// ── Avatar with optional story-ring and online dot ─────────────────────────
 function AvatarCircle({
-  src, name, size = 48, hasStory = false,
-}: { src: string | null; name: string; size?: number; hasStory?: boolean }) {
+  src, name, size = 48, hasStory = false, isOnline = false,
+}: {
+  src: string | null;
+  name: string;
+  size?: number;
+  hasStory?: boolean;
+  isOnline?: boolean;
+}) {
   const initials = name.slice(0, 2).toUpperCase();
   const color = avatarColor(name);
 
@@ -48,11 +61,33 @@ function AvatarCircle({
     </div>
   );
 
-  if (!hasStory) return img;
+  const dotSize = Math.round(size * 0.26);
 
-  return (
+  const wrapper = hasStory ? (
     <div className="story-ring flex-none" style={{ width: size + 6, height: size + 6 }}>
       <div className="story-ring-inner">{img}</div>
+    </div>
+  ) : img;
+
+  if (!isOnline) return <>{wrapper}</>;
+
+  const offset = hasStory ? -1 : -1;
+
+  return (
+    <div className="relative flex-none" style={{ width: hasStory ? size + 6 : size, height: hasStory ? size + 6 : size }}>
+      {wrapper}
+      {/* Green online dot */}
+      <span
+        className="absolute rounded-full border-2"
+        style={{
+          width: dotSize,
+          height: dotSize,
+          background: "var(--nexio-green)",
+          borderColor: "var(--background)",
+          bottom: offset,
+          right: offset,
+        }}
+      />
     </div>
   );
 }
@@ -61,12 +96,24 @@ function relTime(iso: string) {
   return formatDistanceToNow(new Date(iso), { addSuffix: false, locale: de });
 }
 
-function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; currentUserId: string }) {
+// ── Single conversation row ─────────────────────────────────────────────────
+function ConvRow({
+  conv,
+  currentUserId,
+  onlineUsers,
+}: {
+  conv: ConversationWithMembers;
+  currentUserId: string;
+  onlineUsers: Set<string>;
+}) {
   const supabase = createClient();
-  const name   = getConversationName(conv, currentUserId);
-  const avatar = getAvatar(conv, currentUserId);
+  const name    = getConversationName(conv, currentUserId);
+  const avatar  = getAvatar(conv, currentUserId);
   const lastMsg = conv.last_message;
   const unread  = conv.unread_count ?? 0;
+
+  const otherUserId = getOtherUserId(conv, currentUserId);
+  const isOnline    = !!otherUserId && onlineUsers.has(otherUserId);
 
   const myMembership = conv.members?.find((m: any) => m.user_id === currentUserId);
   const [isMuted, setIsMuted]   = useState<boolean>((myMembership as any)?.is_muted ?? false);
@@ -116,8 +163,9 @@ function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; curre
           className="flex items-center gap-3 px-4 py-3 active:opacity-70 transition-opacity"
           style={{ background: "var(--background)" }}
         >
+          {/* Avatar + online dot */}
           <div className="relative flex-none">
-            <AvatarCircle src={avatar} name={name} size={54} />
+            <AvatarCircle src={avatar} name={name} size={54} isOnline={isOnline} />
             {isMuted && (
               <span className="absolute -bottom-0.5 -right-0.5 text-[11px] leading-none">🔕</span>
             )}
@@ -194,6 +242,7 @@ function ConvRow({ conv, currentUserId }: { conv: ConversationWithMembers; curre
   );
 }
 
+// ── Main list with realtime online tracking ─────────────────────────────────
 export default function ConversationList({
   conversations,
   currentUserId,
@@ -201,6 +250,50 @@ export default function ConversationList({
   conversations: ConversationWithMembers[];
   currentUserId: string;
 }) {
+  const supabase = createClient();
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    // Collect all unique other-user IDs from DM conversations
+    const peerIds = conversations
+      .filter((c) => c.type === "direct")
+      .map((c) => getOtherUserId(c, currentUserId))
+      .filter(Boolean) as string[];
+
+    if (!peerIds.length) return;
+
+    // Initial fetch: who among peers is online?
+    supabase
+      .from("users")
+      .select("id, status")
+      .in("id", peerIds)
+      .eq("status", "online")
+      .then(({ data }) => {
+        if (data) setOnlineUsers(new Set(data.map((u) => u.id)));
+      });
+
+    // Subscribe to status changes for these peers
+    const channel = supabase
+      .channel("conv-list-presence")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "users" },
+        (payload) => {
+          const u = payload.new as { id: string; status: string };
+          if (!peerIds.includes(u.id)) return;
+          setOnlineUsers((prev) => {
+            const next = new Set(prev);
+            if (u.status === "online") next.add(u.id);
+            else next.delete(u.id);
+            return next;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [conversations.length, currentUserId]);
+
   if (!conversations.length) {
     return (
       <div className="flex flex-col items-center justify-center h-full py-20 px-8 text-center">
@@ -218,7 +311,7 @@ export default function ConversationList({
   return (
     <ul>
       {conversations.map((conv) => (
-        <ConvRow key={conv.id} conv={conv} currentUserId={currentUserId} />
+        <ConvRow key={conv.id} conv={conv} currentUserId={currentUserId} onlineUsers={onlineUsers} />
       ))}
     </ul>
   );
